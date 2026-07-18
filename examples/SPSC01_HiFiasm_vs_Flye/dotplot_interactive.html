@@ -112,6 +112,7 @@
         <div class="file-status" id="fastaBStatus"></div>
       </div>
       <button class="panel-btn" id="basketDownloadFasta">Download basket as FASTA</button>
+      <div class="file-status" id="exportStatus"></div>
     </div>
   </div>
   <div id="tooltip"></div>
@@ -285,7 +286,11 @@ document.getElementById("basketClear").addEventListener("click", () => {
   renderBasket();
 });
 document.getElementById("basketDownloadIds").addEventListener("click", () => {
-  if (!basket.size) return;
+  if (!basket.size) {
+    exportStatus.style.color = "#E8604C";
+    exportStatus.textContent = "Basket is empty — click alignment lines to add sequences first.";
+    return;
+  }
   const lines = ["# axis\tseqID\tlength_bp"];
   const sorted = Array.from(basket.values()).sort((x, y) =>
       x.axis === y.axis ? x.name.localeCompare(y.name) : x.axis.localeCompare(y.axis));
@@ -315,13 +320,23 @@ function wrapSeq(seq, width) {
   for (let i = 0; i < seq.length; i += width) out.push(seq.slice(i, i + width));
   return out.join("\n");
 }
+const exportStatus = document.getElementById("exportStatus");
+
 function triggerDownload(content, filename, mime) {
-  const blob = new Blob([content], { type: mime || "text/plain" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url; a.download = filename;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  try {
+    const blob = new Blob([content], { type: mime || "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    exportStatus.style.color = "#4C9BE8";
+    exportStatus.textContent = "Downloaded " + filename;
+  } catch (err) {
+    exportStatus.style.color = "#E8604C";
+    exportStatus.textContent = "Download failed: " + err.message +
+        " (if you're viewing this inside an embedded preview, open the HTML file directly in a browser tab and try again)";
+  }
 }
 
 function wireFastaInput(inputEl, statusEl, setMap) {
@@ -345,7 +360,11 @@ wireFastaInput(document.getElementById("fastaBInput"), document.getElementById("
     (m) => { fastaMapB = m; });
 
 document.getElementById("basketDownloadFasta").addEventListener("click", () => {
-  if (!basket.size) { alert("Basket is empty — click alignment lines to add sequences first."); return; }
+  if (!basket.size) {
+    exportStatus.style.color = "#E8604C";
+    exportStatus.textContent = "Basket is empty — click alignment lines to add sequences first.";
+    return;
+  }
   const sorted = Array.from(basket.values()).sort((x, y) =>
       x.axis === y.axis ? x.name.localeCompare(y.name) : x.axis.localeCompare(y.axis));
   const parts = [];
@@ -357,9 +376,16 @@ document.getElementById("basketDownloadFasta").addEventListener("click", () => {
     if (seq === undefined) { missing.push(item.name + " (not found in loaded FASTA)"); continue; }
     parts.push(">" + item.name + "\n" + wrapSeq(seq) + "\n");
   }
-  if (missing.length) alert("Skipped " + missing.length + " sequence(s):\n" + missing.join("\n"));
-  if (!parts.length) return;
+  if (!parts.length) {
+    exportStatus.style.color = "#E8604C";
+    exportStatus.textContent = "None of the basketed sequences were found — missing: " + missing.join(", ");
+    return;
+  }
   triggerDownload(parts.join(""), "YithCOMPASM_basket_sequences.fasta", "text/plain");
+  if (missing.length) {
+    exportStatus.style.color = "#F5A623";
+    exportStatus.textContent += " (skipped " + missing.length + ": " + missing.join(", ") + ")";
+  }
 });
 
 // ── Filters: min sequence length + min %identity ──
@@ -416,9 +442,16 @@ function renderLabels(minLen) {
   minLen = minLen || 0;
   labelLayer.innerHTML = "";
   const fontPx = labelFontPx;
-  const fontUnitsX = fontPx / pxPerUnitX();
-  const fontUnitsY = fontPx / pxPerUnitY();
   const minGapPx = fontPx * 4.2;
+  // Real genome coordinates run into the tens of millions of viewBox units, so
+  // scaling font-size *up* into data space (e.g. ~179,000 units to read as 10px
+  // after the viewBox transform) hits practical font-size caps in real browser
+  // engines and silently fails to render at all. Instead keep font-size a small,
+  // constant, real value and counter-scale each label's own coordinate system via
+  // a per-element transform — the same idea as vector-effect:non-scaling-stroke,
+  // applied manually since there is no non-scaling-size equivalent for text.
+  const invX = 1 / pxPerUnitX();
+  const invY = 1 / pxPerUnitY();
 
   function place(seqs, axis) {
     const visible = seqs.filter(s => s.length >= minLen && (axis === "x"
@@ -434,13 +467,15 @@ function renderLabels(minLen) {
       lastPx = px;
       const t = document.createElementNS(NS, "text");
       t.textContent = s.name;
-      t.setAttribute("font-size", (axis === "x" ? fontUnitsX : fontUnitsY));
+      t.setAttribute("font-size", fontPx);
       t.setAttribute("fill", "#666");
       if (axis === "x") {
-        t.setAttribute("x", mid); t.setAttribute("y", vb.y + fontUnitsY * 1.3);
+        t.setAttribute("transform", "translate(" + mid + " " + (vb.y) + ") scale(" + invX + " " + invY + ")");
+        t.setAttribute("x", 0); t.setAttribute("y", fontPx * 1.3);
         t.setAttribute("text-anchor", "middle");
       } else {
-        t.setAttribute("x", vb.x + 4); t.setAttribute("y", mid);
+        t.setAttribute("transform", "translate(" + (vb.x) + " " + mid + ") scale(" + invX + " " + invY + ")");
+        t.setAttribute("x", 4); t.setAttribute("y", 0);
         t.setAttribute("dominant-baseline", "middle");
       }
       labelLayer.appendChild(t);

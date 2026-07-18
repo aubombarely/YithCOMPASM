@@ -1,5 +1,26 @@
 # Changelog
 
+## [v0.4.1] — 2026-07-19
+
+### Fixed
+- SeqID labels in the interactive dot plot silently failed to render at
+  real genome scale (found on the 21.5 Mb/12.6 Mb UserCase01 data; never
+  triggered by the ~28 kb synthetic test dataset). Root cause: label
+  font-size was scaled *up* into data-space units (e.g. ~179,000) so that
+  the viewBox transform would shrink it back down to the intended screen
+  size — a value that far exceeds the font-size real browser engines will
+  actually render, so labels were dropped with no error. Fixed by keeping
+  font-size a small constant and instead counter-scaling each label's own
+  coordinate system via a per-element `transform`, the same idea as
+  `vector-effect: non-scaling-stroke` used for the alignment lines, applied
+  manually since SVG text has no non-scaling-size equivalent.
+- Basket "Download ID list" / "Download basket as FASTA" gave no feedback
+  on failure (empty basket, missing sequences) via `alert()`, which some
+  embedded/sandboxed preview contexts suppress outright — silently doing
+  nothing. Replaced with a persistent status line in the side panel, and
+  wrapped the actual download trigger in a try/catch that reports the
+  error inline instead of failing silently.
+
 ## [v0.4.0] — 2026-07-19
 
 ### Added
