@@ -1,10 +1,18 @@
-<img src="https://img.shields.io/badge/version-v0.2.0-teal"/>
-<img src="https://img.shields.io/badge/python-3.10%2B-blue"/>
-<img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS-lightgrey"/>
-
-See [CHANGELOG.md](CHANGELOG.md) for release history.
-
 # YithCOMPASM
+
+<p align="center">
+  <img src="assets/yithcompasm_logo.svg" width="260" alt="YithCOMPASM logo"/>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/version-v0.2.0-teal" alt="Version v0.2.0"/>
+  <img src="https://img.shields.io/badge/python-3.10%2B-blue" alt="Python 3.10+"/>
+  <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS-lightgrey" alt="Platform"/>
+</p>
+
+<p align="center">
+  <a href="CHANGELOG.md">Changelog</a>
+</p>
 
 Genome assembly comparison toolkit. Named for the **Great Race of Yith**
 (H.P. Lovecraft, *The Shadow Out of Time*) — beings whose defining trait is
