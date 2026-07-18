@@ -31,7 +31,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-VERSION = "v0.1.0"
+VERSION = "v0.2.0"
 
 MAX_LABELED_SEQS = 30   # only the largest N sequences per axis get gridlines/labels
 
@@ -286,7 +286,32 @@ def parse_paf(paf_path: Path, min_align_len: int, min_identity: float,
     return records
 
 
-# ── Module 2: alignment summary ───────────────────────────────────────────────
+# ── Module 4: alignment summary ───────────────────────────────────────────────
+
+def _merge_intervals(intervals: list) -> list:
+    if not intervals:
+        return []
+    intervals = sorted(intervals)
+    merged = [list(intervals[0])]
+    for start, end in intervals[1:]:
+        if start <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+    return merged
+
+
+def _deduplicated_coverage(records: list, side: str) -> int:
+    """side: 'q' or 't'. Merge per-sequence intervals, return total covered bp
+    (each base counted once, regardless of how many alignments cover it)."""
+    by_seq = {}
+    name_key, start_key, end_key = (("qname", "qstart", "qend") if side == "q"
+                                    else ("tname", "tstart", "tend"))
+    for r in records:
+        by_seq.setdefault(r[name_key], []).append((r[start_key], r[end_key]))
+    return sum(end - start for seq_intervals in by_seq.values()
+              for start, end in _merge_intervals(seq_intervals))
+
 
 def compute_alignment_summary(records: list, lens_a: dict, lens_b: dict) -> dict:
     total_len_a = sum(lens_a.values())
@@ -297,12 +322,19 @@ def compute_alignment_summary(records: list, lens_a: dict, lens_b: dict) -> dict
             "n_alignments": 0, "total_len_a": total_len_a, "total_len_b": total_len_b,
             "n_seqs_a": len(lens_a), "n_seqs_b": len(lens_b),
             "aligned_bp_query": 0, "coverage_a_pct": 0.0, "coverage_b_pct": 0.0,
+            "redundant_bp_a": 0, "redundant_bp_b": 0,
+            "multiplicity_a": 0.0, "multiplicity_b": 0.0,
             "mean_identity": 0.0, "weighted_identity": 0.0,
             "min_identity": 0.0, "max_identity": 0.0,
         }
 
-    aligned_bp_query = sum(r["qend"] - r["qstart"] for r in records)
-    aligned_bp_target = sum(r["tend"] - r["tstart"] for r in records)
+    # Raw sums (overlap-inclusive — a region hit by N alignments counts N times)
+    raw_bp_query = sum(r["qend"] - r["qstart"] for r in records)
+    raw_bp_target = sum(r["tend"] - r["tstart"] for r in records)
+    # Deduplicated sums (each base counted once) — the correct basis for coverage %
+    dedup_bp_query = _deduplicated_coverage(records, "q")
+    dedup_bp_target = _deduplicated_coverage(records, "t")
+
     identities = [r["identity"] for r in records]
     weights = [r["alen"] for r in records]
     weighted_identity = sum(i * w for i, w in zip(identities, weights)) / sum(weights)
@@ -311,9 +343,13 @@ def compute_alignment_summary(records: list, lens_a: dict, lens_b: dict) -> dict
         "n_alignments": len(records),
         "total_len_a": total_len_a, "total_len_b": total_len_b,
         "n_seqs_a": len(lens_a), "n_seqs_b": len(lens_b),
-        "aligned_bp_query": aligned_bp_query,
-        "coverage_a_pct": round(aligned_bp_query / total_len_a * 100, 4) if total_len_a else 0.0,
-        "coverage_b_pct": round(aligned_bp_target / total_len_b * 100, 4) if total_len_b else 0.0,
+        "aligned_bp_query": dedup_bp_query,
+        "coverage_a_pct": round(dedup_bp_query / total_len_a * 100, 4) if total_len_a else 0.0,
+        "coverage_b_pct": round(dedup_bp_target / total_len_b * 100, 4) if total_len_b else 0.0,
+        "redundant_bp_a": raw_bp_query - dedup_bp_query,
+        "redundant_bp_b": raw_bp_target - dedup_bp_target,
+        "multiplicity_a": round(raw_bp_query / dedup_bp_query, 4) if dedup_bp_query else 0.0,
+        "multiplicity_b": round(raw_bp_target / dedup_bp_target, 4) if dedup_bp_target else 0.0,
         "mean_identity": round(sum(identities) / len(identities), 4),
         "weighted_identity": round(weighted_identity, 4),
         "min_identity": round(min(identities), 4),
@@ -335,9 +371,13 @@ def write_alignment_summary(path: Path, stats: dict, assembly_a: Path, assembly_
         fh.write(f"  length   : {stats['total_len_b']:,} bp\n\n")
         fh.write(f"minimap2 preset      : {preset}\n")
         fh.write(f"Alignment blocks kept: {stats['n_alignments']:,}\n")
-        fh.write(f"Aligned bp (query)   : {stats['aligned_bp_query']:,}\n")
+        fh.write(f"Aligned bp (query, deduplicated) : {stats['aligned_bp_query']:,}\n")
         fh.write(f"Coverage of A        : {stats['coverage_a_pct']:.2f}%\n")
         fh.write(f"Coverage of B        : {stats['coverage_b_pct']:.2f}%\n")
+        fh.write(f"Redundant bp in A    : {stats['redundant_bp_a']:,} "
+                 f"(multiplicity {stats['multiplicity_a']:.2f}x)\n")
+        fh.write(f"Redundant bp in B    : {stats['redundant_bp_b']:,} "
+                 f"(multiplicity {stats['multiplicity_b']:.2f}x)\n")
         fh.write(f"Mean identity        : {stats['mean_identity']:.2f}%\n")
         fh.write(f"Length-weighted identity: {stats['weighted_identity']:.2f}%\n")
         fh.write(f"Min / Max identity   : {stats['min_identity']:.2f}% / {stats['max_identity']:.2f}%\n")
@@ -421,7 +461,7 @@ def build_dot_plot(records: list, lens_a: dict, lens_b: dict,
     plt.close(fig)
 
 
-# ── Module 4: sequence correspondence table ───────────────────────────────────
+# ── Module 5: sequence correspondence table ───────────────────────────────────
 
 def build_correspondence_table(records: list, lens_a: dict, out_path: Path) -> None:
     """For each query sequence, report its best-matching target sequence
@@ -448,20 +488,7 @@ def build_correspondence_table(records: list, lens_a: dict, out_path: Path) -> N
     _log(f"  Written: {out_path.name} ({len(rows)} query sequences)")
 
 
-# ── Module 5: unaligned / assembly-specific regions ───────────────────────────
-
-def _merge_intervals(intervals: list) -> list:
-    if not intervals:
-        return []
-    intervals = sorted(intervals)
-    merged = [list(intervals[0])]
-    for start, end in intervals[1:]:
-        if start <= merged[-1][1]:
-            merged[-1][1] = max(merged[-1][1], end)
-        else:
-            merged.append([start, end])
-    return merged
-
+# ── Module 6: unaligned / assembly-specific regions ───────────────────────────
 
 def build_unaligned_regions(records: list, lens_a: dict, lens_b: dict,
                             out_a: Path, out_b: Path, min_gap: int = 500) -> None:
@@ -498,7 +525,62 @@ def build_unaligned_regions(records: list, lens_a: dict, lens_b: dict,
     _log(f"  Written: {out_b.name} ({n_b} regions, {bp_b:,} bp specific to B)")
 
 
-# ── Module 6: lightweight rearrangement flagging ──────────────────────────────
+# ── Module 7: redundancy / coverage depth ─────────────────────────────────────
+
+def _depth_profile(intervals: list) -> list:
+    """Sweep-line coverage depth. Returns [(start, end, depth), ...] segments
+    covering only the span from the first interval start to the last end."""
+    if not intervals:
+        return []
+    events = []
+    for start, end in intervals:
+        events.append((start, 1))
+        events.append((end, -1))
+    events.sort(key=lambda e: (e[0], -e[1]))   # at same position, +1 before -1
+
+    segments = []
+    depth = 0
+    prev_pos = events[0][0]
+    for pos, delta in events:
+        if pos > prev_pos and depth > 0:
+            segments.append((prev_pos, pos, depth))
+        depth += delta
+        prev_pos = pos
+    return segments
+
+
+def build_redundancy_report(records: list, out_a: Path, out_b: Path) -> tuple:
+    """Write per-region coverage-depth TSVs (depth >= 2 only) for both assemblies."""
+    def _write(intervals_by_seq: dict, out_path: Path):
+        n_regions = 0
+        total_bp = 0
+        rows = []
+        for seq_id in sorted(intervals_by_seq):
+            for start, end, depth in _depth_profile(intervals_by_seq[seq_id]):
+                if depth >= 2:
+                    rows.append((seq_id, start, end, end - start, depth))
+                    n_regions += 1
+                    total_bp += end - start
+        rows.sort(key=lambda r: (r[0], r[1]))
+        with open(out_path, "w") as fh:
+            fh.write("seq_id\tstart\tend\tlength\tdepth\n")
+            for row in rows:
+                fh.write("\t".join(str(v) for v in row) + "\n")
+        return n_regions, total_bp
+
+    query_intervals, target_intervals = {}, {}
+    for r in records:
+        query_intervals.setdefault(r["qname"], []).append((r["qstart"], r["qend"]))
+        target_intervals.setdefault(r["tname"], []).append((r["tstart"], r["tend"]))
+
+    n_a, bp_a = _write(query_intervals, out_a)
+    n_b, bp_b = _write(target_intervals, out_b)
+    _log(f"  Written: {out_a.name} ({n_a} regions, {bp_a:,} bp covered >=2x in A)")
+    _log(f"  Written: {out_b.name} ({n_b} regions, {bp_b:,} bp covered >=2x in B)")
+    return n_a, n_b
+
+
+# ── Module 8: lightweight rearrangement flagging ──────────────────────────────
 
 REARRANGEMENT_SLACK_BP = 200   # tolerance for target-coordinate order breaks
 
@@ -628,8 +710,10 @@ def run_compare_assemblies(args) -> None:
             _log("    [5] Sequence correspondence → results/mod05_correspondence_*.tsv")
         if not args.skip_unaligned:
             _log("    [6] Unaligned regions     → results/mod06_unaligned_*.tsv")
+        if not args.skip_redundancy:
+            _log("    [7] Redundancy / coverage depth → results/mod07_redundancy_*.tsv")
         if not args.skip_rearrangements:
-            _log("    [7] Rearrangement flags   → results/mod07_rearrangements_*.tsv")
+            _log("    [8] Rearrangement flags   → results/mod08_rearrangements_*.tsv")
         _log("  Exiting (--dry_run).")
         if _LOG_FH:
             _LOG_FH.close()
@@ -699,9 +783,17 @@ def run_compare_assemblies(args) -> None:
         unaligned_b = results / f"mod06_unaligned_B_{prefix}.tsv"
         build_unaligned_regions(records, lens_a, lens_b, unaligned_a, unaligned_b)
 
+    if not args.skip_redundancy:
+        _banner("Module 7 — Redundancy / coverage depth")
+        redund_a = results / f"mod07_redundancy_A_{prefix}.tsv"
+        redund_b = results / f"mod07_redundancy_B_{prefix}.tsv"
+        n_redund_a, n_redund_b = build_redundancy_report(records, redund_a, redund_b)
+        summary["n_redundant_regions_a"] = n_redund_a
+        summary["n_redundant_regions_b"] = n_redund_b
+
     if not args.skip_rearrangements:
-        _banner("Module 7 — Rearrangement / inversion flags")
-        rearr_path = results / f"mod07_rearrangements_{prefix}.tsv"
+        _banner("Module 8 — Rearrangement / inversion flags")
+        rearr_path = results / f"mod08_rearrangements_{prefix}.tsv"
         n_flags = flag_rearrangements(records, rearr_path, args.min_rearrangement_len)
         summary["n_rearrangement_flags"] = n_flags
 
@@ -766,7 +858,8 @@ def main(argv=None):
     cmp_ap.add_argument("--skip_dotplot", action="store_true", help="Skip Module 3 — dot plot")
     cmp_ap.add_argument("--skip_correspondence", action="store_true", help="Skip Module 5 — sequence correspondence table")
     cmp_ap.add_argument("--skip_unaligned", action="store_true", help="Skip Module 6 — unaligned region report")
-    cmp_ap.add_argument("--skip_rearrangements", action="store_true", help="Skip Module 7 — rearrangement flagging")
+    cmp_ap.add_argument("--skip_redundancy", action="store_true", help="Skip Module 7 — redundancy / coverage depth report")
+    cmp_ap.add_argument("--skip_rearrangements", action="store_true", help="Skip Module 8 — rearrangement flagging")
     cmp_ap.add_argument("--min_rearrangement_len", type=int, default=1000,
                         help="Minimum alignment block length (bp) considered for Module 7 "
                              "inversion/rearrangement flagging (default: 1000)")

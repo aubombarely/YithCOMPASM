@@ -1,4 +1,4 @@
-<img src="https://img.shields.io/badge/version-v0.1.0-teal"/>
+<img src="https://img.shields.io/badge/version-v0.2.0-teal"/>
 <img src="https://img.shields.io/badge/python-3.10%2B-blue"/>
 <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS-lightgrey"/>
 
@@ -22,7 +22,8 @@ between two genomes.
 | 4 | `mod04_alignment_summary_*.txt` | Coverage and identity statistics |
 | 5 | `mod05_correspondence_*.tsv` | Best-matching target sequence per query sequence |
 | 6 | `mod06_unaligned_{A,B}_*.tsv` | Regions with no alignment coverage (assembly-specific sequence) |
-| 7 | `mod07_rearrangements_*.tsv` | Alignment-derived inversion/rearrangement candidates (heuristic, not a full SV caller) |
+| 7 | `mod07_redundancy_{A,B}_*.tsv` | Regions covered ≥2x (e.g. a collapsed haplotype hit by multiple contigs of the other assembly) |
+| 8 | `mod08_rearrangements_*.tsv` | Alignment-derived inversion/rearrangement candidates (heuristic, not a full SV caller) |
 
 ## Requirements
 
@@ -66,12 +67,13 @@ python3 scripts/YithCOMPASM.py compare_assemblies \
 | `--include_secondary` | No | Include minimap2 secondary alignments (default: primary only) |
 | `--color_map` | No | Matplotlib colormap for the dot plot identity scale (default: `RdYlGn`) |
 | `--format` | No | Comma-separated dot plot formats: jpeg, png, pdf, svg (default: `jpeg`) |
-| `--min_rearrangement_len` | No | Minimum block length considered for Module 7 flagging (default: 1000) |
+| `--min_rearrangement_len` | No | Minimum block length considered for Module 8 flagging (default: 1000) |
 | `--skip_metrics` | No | Skip Module 1 |
 | `--skip_dotplot` | No | Skip Module 3 |
 | `--skip_correspondence` | No | Skip Module 5 |
 | `--skip_unaligned` | No | Skip Module 6 |
-| `--skip_rearrangements` | No | Skip Module 7 |
+| `--skip_redundancy` | No | Skip Module 7 |
+| `--skip_rearrangements` | No | Skip Module 8 |
 | `--force` | No | Rerun all steps even if checkpointed outputs exist |
 | `--dry_run` | No | Validate inputs and print steps without executing |
 | `--disable_co2_tracking` | No | Disable carbon footprint tracking |
@@ -88,7 +90,9 @@ python3 scripts/YithCOMPASM.py compare_assemblies \
 │   ├── mod05_correspondence_{prefix}.tsv
 │   ├── mod06_unaligned_A_{prefix}.tsv
 │   ├── mod06_unaligned_B_{prefix}.tsv
-│   ├── mod07_rearrangements_{prefix}.tsv
+│   ├── mod07_redundancy_A_{prefix}.tsv
+│   ├── mod07_redundancy_B_{prefix}.tsv
+│   ├── mod08_rearrangements_{prefix}.tsv
 │   └── {prefix}.run_summary.json
 ├── workdir/
 │   └── {prefix}.paf              (safe to delete after a successful run)
@@ -106,9 +110,37 @@ alignment identity, and will visibly understate real similarity (verified
 during development: omitting `-c` on a 1.5%-divergence test pair reported
 ~55-78% identity instead of the correct ~98.4%).
 
+## Coverage, redundancy, and collapsed haplotypes
+
+`coverage_a_pct`/`coverage_b_pct` are computed from **deduplicated**
+(interval-merged) alignment coverage — each base of an assembly is counted
+at most once, so these percentages can never exceed 100%. This matters
+specifically when comparing two assemblies of the same sample built with
+different collapsing behavior (e.g. a haplotype-collapsing assembler like
+early-mode HiFiasm vs. a haplotype-preserving one like Flye): if the naive
+sum of aligned base-pairs were used instead, a target region hit by two
+different query contigs (one per haplotype) would be counted twice,
+inflating coverage past 100% — which is exactly what an earlier version of
+this tool did before this was caught by testing against real HiFiasm/Flye
+assemblies of a hybrid yeast strain.
+
+That redundancy signal is genuinely useful, so it isn't just discarded —
+it's reported explicitly:
+- `redundant_bp_a`/`redundant_bp_b` and `multiplicity_a`/`multiplicity_b`
+  in `mod04_alignment_summary_*.txt` and the run summary JSON give a
+  whole-assembly-level number (e.g. `multiplicity_b: 1.74` means assembly B
+  is, on average, hit 1.74x over its aligned length — consistent with a
+  substantial fraction of it being present as two separate, only partially
+  merged haplotype copies in assembly A).
+- **Module 7** (`mod07_redundancy_{A,B}_*.tsv`) gives the region-level
+  breakdown: a sweep-line coverage-depth report listing every region
+  covered ≥2x, with its exact depth. This is what actually lets you find
+  *which* contigs/regions are collapsed, not just that some redundancy
+  exists somewhere.
+
 ## Rearrangement/inversion flagging — what it is and isn't
 
-Module 7 is a lightweight heuristic derived directly from the alignment
+Module 8 is a lightweight heuristic derived directly from the alignment
 already computed for the dot plot: for each query/target sequence pair with
 multiple alignment blocks, it flags blocks on the minority strand
 (candidate inversions) and blocks that break the expected monotonic target-
@@ -117,7 +149,7 @@ a structural variant caller (no SyRI/AsmSV-style breakpoint refinement) and
 it can only flag what minimap2 actually reports as separate alignment
 records — a small inversion sandwiched between two colinear anchors can get
 bridged by minimap2 into one degenerate alignment instead of being split,
-in which case Module 7 will not see it. See `test/README.md` for a worked
+in which case Module 8 will not see it. See `test/README.md` for a worked
 example of this behavior.
 
 ## Run log / run summary / carbon footprint
@@ -133,8 +165,8 @@ estimated CO2 emissions if `codecarbon` is installed), and an optional
 2. Inspect `mod04_alignment_summary_*.txt` for overall coverage/identity.
 3. Open `mod03_dotplot_*.jpeg` to visually scan for large-scale structural
    differences.
-4. Cross-check anything visually striking against `mod07_rearrangements_*.tsv`
-   and `mod06_unaligned_*.tsv` for a tabular breakdown.
+4. Cross-check anything visually striking against `mod08_rearrangements_*.tsv`,
+   `mod07_redundancy_*.tsv`, and `mod06_unaligned_*.tsv` for a tabular breakdown.
 5. Use `mod05_correspondence_*.tsv` to confirm scaffold-to-chromosome
    assignment, e.g. as input to `GenoToolBoxPlus/FastaRename.py` if you need
    to harmonize sequence naming between the two assemblies.

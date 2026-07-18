@@ -1,5 +1,30 @@
 # Changelog
 
+## [v0.2.0] — 2026-07-18
+
+### Added
+- Module 7 — redundancy / coverage-depth report (`mod07_redundancy_{A,B}_*.tsv`):
+  a sweep-line coverage-depth analysis flagging every region covered ≥2x by
+  alignment blocks, for both assemblies. Rearrangement flagging renumbered
+  from Module 7 to Module 8 (`mod08_rearrangements_*.tsv`) to make room.
+- `redundant_bp_a`/`redundant_bp_b` and `multiplicity_a`/`multiplicity_b`
+  fields in the alignment summary and run summary JSON.
+- `--skip_redundancy` flag.
+- Test dataset extended with a fourth query sequence (`ctg4`, a divergent
+  duplicate of `ctg2`) to exercise the new redundancy detection.
+
+### Fixed
+- `coverage_a_pct`/`coverage_b_pct` could previously exceed 100% when a
+  target region was hit by multiple query alignments (raw base-pair sums,
+  not deduplicated) — discovered while validating against real assembly
+  data (a haplotype-collapsing HiFiasm assembly vs. a haplotype-preserving
+  Flye assembly of the same hybrid yeast sample, which legitimately
+  produced `coverage_b_pct = 169.52%`). Coverage is now computed from
+  merged, deduplicated alignment intervals and is correctly bounded to
+  [0, 100]; the redundancy this previously (accidentally) signaled is now
+  reported explicitly instead, in more detail, via the fields and module
+  above.
+
 ## [v0.1.0] — 2026-07-18
 
 ### Added

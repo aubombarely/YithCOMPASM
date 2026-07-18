@@ -25,6 +25,17 @@ differences so the tool's modules have something concrete to detect:
              Module 6 "unaligned in A" region around ctg2:3300-4000
     ctg3  2,000 bp of unrelated random sequence, present only in B
           -> expect a Module 6 "unaligned in B" region covering ~all of ctg3
+
+Assembly A also gets a fourth sequence not present in A originally:
+    ctg4  a second, independently-mutated (~2% divergence) copy of A:ctg2,
+          added only to assembly A -> since both ctg2 and ctg4 align well to
+          the same B:ctg2 region, this simulates an uncollapsed second
+          haplotype copy hitting a single collapsed target contig (the same
+          pattern observed comparing a Flye assembly, which kept both
+          haplotype copies of a hybrid yeast separate, against a HiFiasm
+          assembly of the same sample, which collapsed them into one).
+          -> expect Module 7 to report B:ctg2 as covered at depth 2 across
+             most of its length
 """
 
 import random
@@ -66,7 +77,11 @@ def main():
     # Assembly A
     ctg1_a = random_seq(12000)
     ctg2_a = random_seq(8000)
-    write_fasta(out_dir / "test_assembly_A.fasta", {"ctg1": ctg1_a, "ctg2": ctg2_a})
+    # ctg4: a second, more divergent copy of ctg2 (simulates an uncollapsed
+    # second haplotype that both align back to the same collapsed B:ctg2)
+    ctg4_a = mutate(ctg2_a, 0.02)
+    write_fasta(out_dir / "test_assembly_A.fasta",
+               {"ctg1": ctg1_a, "ctg2": ctg2_a, "ctg4": ctg4_a})
 
     # Assembly B — ctg1: SNPs + one inverted block after a single breakpoint at 8000bp
     s1, s2 = ctg1_a[0:8000], ctg1_a[8000:12000]
@@ -84,7 +99,7 @@ def main():
     write_fasta(out_dir / "test_assembly_B.fasta",
                {"ctg1": ctg1_b, "ctg2": ctg2_b, "ctg3": ctg3_b})
 
-    print("Written test_assembly_A.fasta (ctg1=12000bp, ctg2=8000bp)")
+    print("Written test_assembly_A.fasta (ctg1=12000bp, ctg2=8000bp, ctg4=8000bp)")
     print("Written test_assembly_B.fasta (ctg1=12000bp w/ inversion, "
          "ctg2=7300bp w/ swap+drop, ctg3=2000bp private)")
 
