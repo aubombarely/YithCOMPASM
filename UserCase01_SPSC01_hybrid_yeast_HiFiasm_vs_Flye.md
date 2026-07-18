@@ -371,11 +371,71 @@ different organism" both turned out to have mundane, well-known
 explanations specific to *S. cerevisiae* genome assembly difficulty
 (paralogous subtelomeres, rDNA repeat collapse). There is no BLAST
 evidence anywhere in either assembly of *S. pombe* or a third organism.
-The *S. cerevisiae* mitochondrion's absence as anyone's best-match target
-remains a minor open question, but the more likely explanation is that
-mito sequence is present but merged into a larger multi-locus contig
-rather than assembling as its own separate contig — not that a different
-organism's mitochondrion is standing in for it.
+This still left one loose end open: why does no contig in either assembly
+have the real *S. cerevisiae* mitochondrion as its best match? The next
+section answers that directly.
+
+### Follow-up — mapping a mitogenome reference panel directly
+
+Rather than guessing which contig might be a mitochondrial genome,
+a more direct test: download known mitochondrial genomes for several
+relevant species and align them against *both whole assemblies* at once.
+A hit would show up regardless of which contig it landed in or how large
+that contig is.
+
+| Species | Accession | Length |
+|---|---|---|
+| *S. cerevisiae* | NC_001224.1 | 85,779 bp |
+| *S. pombe* | NC_088682.1 | 19,433 bp |
+| *S. paradoxus* | CP125617.1 | 73,893 bp |
+| *S. uvarum* | OP499835.1 | 64,015 bp |
+| *S. japonicus* | NC_004332.1 | 80,059 bp |
+| *S. octosporus* | NC_004312.1 | 44,227 bp |
+
+```bash
+python3 scripts/YithCOMPASM.py compare_assemblies \
+    --assembly_a Sacer_HIFI_FLYE.fasta \
+    --assembly_b mitogenome_panel.fasta \
+    --output results/flye_vs_mitopanel \
+    --preset map-ont --min_align_len 30 --threads 4
+```
+
+**Important methodological catch:** the first attempt at this used
+`--preset asm20` (matching the rest of this use case) and found **zero**
+alignments — not filtered out, minimap2 itself reported nothing, even
+against *S. cerevisiae*'s own mitochondrion. This turned out to be the
+wrong tool setting, not a biological result: the `asm*` presets are tuned
+for large, near-collinear genome-vs-genome alignment and are not sensitive
+enough when the reference is tiny (here, 19-86 kb) relative to a
+multi-megabase assembly. Switching to `--preset map-ont` (added to
+YithCOMPASM specifically because of this) recovered real alignments.
+
+**With the right preset, the result is decisive and different from what
+this document previously speculated:**
+
+| | Flye | HiFiasm |
+|---|---|---|
+| Alignment blocks | 12 | 6 |
+| Aligned bp (deduplicated) | 1,089 | 478 |
+| Coverage of mitopanel (367,406 bp total) | 0.24% | 0.13% |
+| Longest single hit | 169 bp | 93 bp |
+
+Every hit is a short (46-169 bp) fragment, and the same fragment on a
+given nuclear contig frequently matches *multiple different species'*
+mitogenomes at similar length and identity — the signature of conserved
+tRNA-like elements or ancient nuclear-embedded mitochondrial fragments
+(NUMTs), not a real assembled mitochondrial genome. There is no long,
+contiguous, high-identity block anywhere, for any of the six species
+tested.
+
+**Corrected conclusion:** mitochondrial DNA is not meaningfully assembled
+in either genome — not merged into a larger contig as earlier speculated,
+essentially absent. Given the nuclear genome is unambiguously ~96-98%
+*S. cerevisiae* (Step 6), this is most plausibly a library-prep/size-selection
+artifact — PacBio HiFi SMRTbell library preparation is typically optimized
+around the bulk nuclear fragment size distribution, and small circular
+mitochondrial molecules often do not survive that process the same way —
+rather than anything to do with *S. pombe* or a hidden organism.
 
 ---
 
@@ -386,9 +446,13 @@ this example. Reference genomes: *S. cerevisiae* S288C
 ([GCF_000146045.2](https://www.ncbi.nlm.nih.gov/datasets/genome/GCF_000146045.2/))
 and *S. pombe* 972h⁻
 ([GCF_000002945.2](https://www.ncbi.nlm.nih.gov/datasets/genome/GCF_000002945.2/)),
-both fetched via the NCBI Datasets API. Output files are committed under
+both fetched via the NCBI Datasets API. The six-species mitogenome panel
+(fetched via NCBI E-utilities `efetch`) is committed as
+[`mitogenome_panel.fasta`](examples/SPSC01_HiFiasm_vs_Flye/mitogenome_panel.fasta).
+Output files are committed under
 [`examples/SPSC01_HiFiasm_vs_Flye/`](examples/SPSC01_HiFiasm_vs_Flye/):
 dot plots and the SPSC01-pair summary/redundancy/rearrangement files at
-the top level, and the four reference-comparison alignment summaries under
+the top level, and all six reference-comparison alignment summaries
+(*S. cerevisiae*, *S. pombe*, mitogenome panel × both assemblers) under
 `reference_comparisons/` — enough to check every number in this document
 without rerunning anything.

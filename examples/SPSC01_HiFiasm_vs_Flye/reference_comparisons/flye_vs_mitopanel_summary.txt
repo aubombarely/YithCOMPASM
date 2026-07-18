@@ -1,0 +1,21 @@
+YithCOMPASM.py v0.3.0 — compare_assemblies
+Date       : 2026-07-18 23:30:55
+Command    : scripts/YithCOMPASM.py compare_assemblies --assembly_a /Users/aubombarely/Documents/USA_work/CLASSES/BCB/EscuelaVeranoBCB2026/Material/exercise06/Sacer_HIFI_FLYE.fasta --assembly_b /tmp/mitopanel/mitogenome_panel.fasta --output /tmp/flye_vs_mitopanel2 --preset map-ont --threads 4 --force --min_align_len 30 --skip_unaligned --skip_redundancy --skip_rearrangements --skip_dotplot
+
+Assembly A : /Users/aubombarely/Documents/USA_work/CLASSES/BCB/EscuelaVeranoBCB2026/Material/exercise06/Sacer_HIFI_FLYE.fasta
+  sequences: 99
+  length   : 21,491,821 bp
+Assembly B : /private/tmp/mitopanel/mitogenome_panel.fasta
+  sequences: 6
+  length   : 367,406 bp
+
+minimap2 preset      : map-ont
+Alignment blocks kept: 12
+Aligned bp (query, deduplicated) : 1,089
+Coverage of A        : 0.01%
+Coverage of B        : 0.24%
+Redundant bp in A    : 83 (multiplicity 1.08x)
+Redundant bp in B    : 344 (multiplicity 1.40x)
+Mean identity        : 88.69%
+Length-weighted identity: 87.05%
+Min / Max identity   : 79.41% / 98.28%

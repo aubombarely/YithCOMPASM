@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v0.2.0-teal" alt="Version v0.2.0"/>
+  <img src="https://img.shields.io/badge/version-v0.3.0-teal" alt="Version v0.3.0"/>
   <img src="https://img.shields.io/badge/python-3.10%2B-blue" alt="Python 3.10+"/>
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS-lightgrey" alt="Platform"/>
 </p>
@@ -69,7 +69,7 @@ python3 scripts/YithCOMPASM.py compare_assemblies \
 | `--assembly_b` | Yes | Second assembly FASTA (used as target) |
 | `--output` | Yes | Output directory |
 | `--threads` | No | Threads passed to minimap2 (default: 4) |
-| `--preset` | No | minimap2 preset: `asm5`/`asm10`/`asm20` ~ up to 5%/10%/20% divergence (default: `asm5`) |
+| `--preset` | No | minimap2 preset: `asm5`/`asm10`/`asm20` (up to 5%/10%/20% divergence, large near-collinear genome-vs-genome) or `map-hifi`/`map-ont`/`map-pb` (use when `--assembly_b` is a small reference, e.g. a gene/organelle panel — the `asm*` presets are not sensitive enough for that; default: `asm5`) |
 | `--min_align_len` | No | Minimum alignment block length (bp) to include (default: 1000) |
 | `--min_identity` | No | Minimum % identity to include (default: 0.0) |
 | `--include_secondary` | No | Include minimap2 secondary alignments (default: primary only) |

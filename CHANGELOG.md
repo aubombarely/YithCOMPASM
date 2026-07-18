@@ -1,5 +1,17 @@
 # Changelog
 
+## [v0.3.0] — 2026-07-18
+
+### Added
+- `--preset` now also accepts `map-hifi`/`map-ont`/`map-pb`, alongside the
+  existing `asm5`/`asm10`/`asm20`. Discovered while searching real
+  assemblies against a small (19-86 kb) mitochondrial genome reference
+  panel: the `asm*` presets are tuned for large, near-collinear
+  genome-vs-genome alignment and silently miss real hits when
+  `--assembly_b` is much smaller than `--assembly_a` (e.g. a single
+  gene/organelle panel) — `minimap2 -x asm20` found zero alignments where
+  `-x map-ont` correctly found real (if short) matches.
+
 ## [v0.2.0] — 2026-07-18
 
 ### Added

@@ -31,7 +31,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-VERSION = "v0.2.0"
+VERSION = "v0.3.0"
 
 MAX_LABELED_SEQS = 30   # only the largest N sequences per axis get gridlines/labels
 
@@ -842,8 +842,13 @@ def main(argv=None):
     cmp_ap.add_argument("--assembly_b", required=True, type=Path, help="Second assembly FASTA (used as target)")
     cmp_ap.add_argument("--output", required=True, help="Output directory")
     cmp_ap.add_argument("--threads", type=int, default=4, help="Threads passed to minimap2 (default: 4)")
-    cmp_ap.add_argument("--preset", default="asm5", choices=["asm5", "asm10", "asm20"],
-                        help="minimap2 preset: asm5/asm10/asm20 ~ up to 5%%/10%%/20%% divergence (default: asm5)")
+    cmp_ap.add_argument("--preset", default="asm5",
+                        choices=["asm5", "asm10", "asm20", "map-hifi", "map-ont", "map-pb"],
+                        help="minimap2 preset. asm5/asm10/asm20 ~ up to 5%%/10%%/20%% divergence, "
+                             "tuned for large near-collinear genome-vs-genome alignment (default: asm5). "
+                             "Use map-hifi/map-ont/map-pb instead when --assembly_b is a small reference "
+                             "(e.g. a single gene/organelle panel far shorter than --assembly_a) — the asm* "
+                             "presets are not sensitive enough for that and can silently miss real hits.")
     cmp_ap.add_argument("--min_align_len", type=int, default=1000,
                         help="Minimum alignment block length (bp) to include (default: 1000)")
     cmp_ap.add_argument("--min_identity", type=float, default=0.0,
