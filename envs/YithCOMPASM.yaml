@@ -1,0 +1,9 @@
+name: YithCOMPASM
+channels:
+  - bioconda
+  - conda-forge
+dependencies:
+  - python>=3.10
+  - minimap2
+  - matplotlib
+  - codecarbon          # optional; enables carbon footprint tracking

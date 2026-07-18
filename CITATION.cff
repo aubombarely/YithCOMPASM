@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "YithCOMPASM"
+abstract: >
+  A genome assembly comparison toolkit: metrics comparison, minimap2-based
+  whole-genome dot plots colored by percent identity, sequence
+  correspondence tables, unaligned-region reports, and lightweight
+  rearrangement flagging between two FASTA assemblies. Named for the Great
+  Race of Yith (H.P. Lovecraft, "The Shadow Out of Time"), whose defining
+  trait is documenting and comparing civilizations across time — paired
+  with "COMPASM" (Compare Assemblies), evoking a compass for navigating
+  between two genomes.
+authors:
+  - family-names: Bombarely
+    given-names: Aureliano
+    email: aubombarely@gmail.com
+    orcid: "https://orcid.org/0000-0001-6257-8914"
+version: "v0.1.0"
+date-released: "2026-07-18"
+license: MIT
+repository-code: "https://github.com/aubombarely/YithCOMPASM"
+keywords:
+  - genome assembly
+  - dot plot
+  - synteny
+  - minimap2
+  - bioinformatics
