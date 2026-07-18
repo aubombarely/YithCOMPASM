@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>YithCOMPASM interactive dot plot</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+         margin: 0; background: #fafafa; color: #222; }
+  #toolbar { padding: 8px 14px; background: #fff; border-bottom: 1px solid #ddd;
+             display: flex; align-items: center; gap: 14px; font-size: 13px; flex-wrap: wrap; }
+  #toolbar button { padding: 4px 10px; cursor: pointer; border: 1px solid #bbb; border-radius: 4px;
+                     background: #f2f2f2; }
+  #toolbar button:hover { background: #e6e6e6; }
+  #main { display: flex; height: calc(100vh - 44px); }
+  #plot-container { position: relative; flex: 1 1 auto; overflow: hidden; cursor: grab; background: #fff; }
+  #plot-container.dragging { cursor: grabbing; }
+  svg { display: block; width: 100%; height: 100%; }
+  .seg { stroke-width: 1.6; vector-effect: non-scaling-stroke; pointer-events: none; }
+  .seg.hover { stroke-width: 3.5 !important; }
+  .seg-hit { stroke: transparent; fill: none; stroke-width: 10; vector-effect: non-scaling-stroke;
+             cursor: pointer; pointer-events: stroke; }
+  .gridline { stroke: #dcdcdc; stroke-width: 1; vector-effect: non-scaling-stroke; }
+  #tooltip { position: absolute; pointer-events: none; background: rgba(20,20,20,0.92); color: #fff;
+             padding: 6px 9px; border-radius: 4px; font-size: 12px; line-height: 1.5; display: none;
+             white-space: nowrap; z-index: 10; }
+  #legend { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+  #legend-bar { width: 120px; height: 12px;
+                background: linear-gradient(to right, #a50026, #d73027, #f46d43, #fdae61, #fee08b,
+                                             #ffffbf, #d9ef8b, #a6d96a, #66bd63, #1a9850, #006837);
+                border: 1px solid #999; }
+  #search { padding: 3px 6px; border: 1px solid #bbb; border-radius: 4px; width: 160px; }
+  #sidepanel { flex: 0 0 250px; border-left: 1px solid #ddd; background: #fff; padding: 16px;
+               overflow-y: auto; font-size: 13px; }
+  #sidepanel h4 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em;
+                  color: #666; }
+  .filter-row { margin-bottom: 18px; }
+  .filter-row label { display: block; margin-bottom: 6px; font-weight: 600; }
+  .filter-row .val { font-weight: 400; color: #555; }
+  .filter-row input[type=range] { width: 100%; }
+  .filter-row input[type=number] { width: 100%; padding: 4px 6px; border: 1px solid #bbb; border-radius: 4px; }
+  #filterCount { color: #888; font-size: 12px; margin-top: 4px; }
+  #filterReset { margin-top: 4px; font-size: 12px; padding: 3px 8px; border: 1px solid #bbb;
+                 border-radius: 4px; background: #f2f2f2; cursor: pointer; }
+  .gridline.basketed { stroke: #F5A623; stroke-width: 2.4; }
+  .seg.basketed { stroke-width: 3.2 !important; }
+  #basketList { list-style: none; margin: 0 0 8px; padding: 0; max-height: 160px; overflow-y: auto; }
+  #basketList li { display: flex; align-items: center; justify-content: space-between; gap: 6px;
+                    padding: 3px 0; border-bottom: 1px solid #eee; }
+  #basketList .tag { display: inline-block; font-size: 10px; font-weight: 700; color: #fff;
+                      background: #888; border-radius: 3px; padding: 0 4px; margin-right: 5px; }
+  #basketList .tag.a { background: #4C9BE8; }
+  #basketList .tag.b { background: #F5A623; }
+  #basketList .rm { cursor: pointer; color: #E8604C; font-weight: 700; border: none; background: none;
+                     font-size: 14px; line-height: 1; padding: 0 3px; }
+  #basketEmpty { color: #888; font-size: 12px; margin-bottom: 8px; }
+  .panel-btn { display: block; width: 100%; margin-top: 6px; font-size: 12px; padding: 5px 8px;
+               border: 1px solid #bbb; border-radius: 4px; background: #f2f2f2; cursor: pointer; }
+  .panel-btn:hover { background: #e6e6e6; }
+  .panel-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .file-row { margin-top: 10px; font-size: 12px; }
+  .file-row label { display: block; font-weight: 600; margin-bottom: 3px; }
+  .file-row input[type=file] { width: 100%; font-size: 11px; }
+  .file-status { color: #4C9BE8; font-size: 11px; margin-top: 2px; }
+</style>
+</head>
+<body>
+  <div id="toolbar">
+    <strong>YithCOMPASM</strong>
+    <span id="counts"></span>
+    <button id="resetBtn">Reset zoom</button>
+    <span>Scroll to zoom &middot; drag to pan &middot; hover a line for details &middot; click a line to add it to the basket</span>
+    <input id="search" type="text" placeholder="Find sequence ID (A or B)&hellip;"/>
+    <div id="legend"><span>low %ID</span><div id="legend-bar"></div><span>high %ID</span></div>
+  </div>
+  <div id="main">
+    <div id="plot-container">
+      <svg id="plot" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none"></svg>
+    </div>
+    <div id="sidepanel">
+      <h4>Filters</h4>
+      <div class="filter-row">
+        <label>Min sequence length (bp) <span class="val" id="lenVal">0</span></label>
+        <input type="number" id="lenFilter" min="0" step="1000" value="0"/>
+      </div>
+      <div class="filter-row">
+        <label>Min % identity <span class="val" id="idVal">0</span></label>
+        <input type="range" id="idFilter" min="0" max="100" step="0.5" value="0"/>
+      </div>
+      <button id="filterReset">Reset filters</button>
+      <div id="filterCount"></div>
+
+      <div class="filter-row" style="margin-top:18px;">
+        <label>SeqID label size <span class="val" id="fontVal">10px</span></label>
+        <input type="range" id="fontFilter" min="8" max="60" step="1" value="10"/>
+      </div>
+
+      <h4 style="margin-top:22px;">Basket</h4>
+      <div id="basketEmpty">No sequences selected yet — click an alignment line to add its A and B sequences.</div>
+      <ul id="basketList"></ul>
+      <button class="panel-btn" id="basketClear">Clear basket</button>
+      <button class="panel-btn" id="basketDownloadIds">Download ID list (.txt)</button>
+
+      <div class="file-row">
+        <label>Assembly A FASTA (optional, for export)</label>
+        <input type="file" id="fastaAInput" accept=".fa,.fasta,.fna,.fas,.txt"/>
+        <div class="file-status" id="fastaAStatus"></div>
+      </div>
+      <div class="file-row">
+        <label>Assembly B FASTA (optional, for export)</label>
+        <input type="file" id="fastaBInput" accept=".fa,.fasta,.fna,.fas,.txt"/>
+        <div class="file-status" id="fastaBStatus"></div>
+      </div>
+      <button class="panel-btn" id="basketDownloadFasta">Download basket as FASTA</button>
+    </div>
+  </div>
+  <div id="tooltip"></div>
+
+<script>
+const DATA = {"total_a": 21491821, "total_b": 12622614, "seqs_a": [{"name": "contig_77", "offset": 0, "length": 1206076}, {"name": "contig_76", "offset": 1206076, "length": 1191529}, {"name": "contig_30", "offset": 2397605, "length": 808617}, {"name": "contig_29", "offset": 3206222, "length": 799112}, {"name": "contig_143", "offset": 4005334, "length": 655475}, {"name": "contig_6", "offset": 4660809, "length": 563239}, {"name": "contig_24", "offset": 5224048, "length": 500646}, {"name": "contig_25", "offset": 5724694, "length": 496510}, {"name": "contig_145", "offset": 6221204, "length": 445342}, {"name": "contig_26", "offset": 6666546, "length": 443858}, {"name": "contig_5", "offset": 7110404, "length": 438220}, {"name": "contig_83", "offset": 7548624, "length": 375045}, {"name": "contig_84", "offset": 7923669, "length": 370052}, {"name": "contig_105", "offset": 8293721, "length": 367745}, {"name": "contig_104", "offset": 8661466, "length": 356666}, {"name": "contig_7", "offset": 9018132, "length": 342821}, {"name": "contig_121", "offset": 9360953, "length": 342793}, {"name": "contig_122", "offset": 9703746, "length": 336633}, {"name": "contig_34", "offset": 10040379, "length": 332172}, {"name": "contig_128", "offset": 10372551, "length": 330158}, {"name": "contig_127", "offset": 10702709, "length": 328466}, {"name": "contig_35", "offset": 11031175, "length": 325553}, {"name": "contig_144", "offset": 11356728, "length": 295473}, {"name": "contig_66", "offset": 11652201, "length": 285993}, {"name": "contig_79", "offset": 11938194, "length": 236580}, {"name": "contig_17", "offset": 12174774, "length": 234922}, {"name": "contig_78", "offset": 12409696, "length": 234168}, {"name": "contig_56", "offset": 12643864, "length": 233657}, {"name": "contig_55", "offset": 12877521, "length": 233134}, {"name": "contig_123", "offset": 13110655, "length": 231361}, {"name": "contig_18", "offset": 13342016, "length": 229449}, {"name": "contig_43", "offset": 13571465, "length": 225377}, {"name": "contig_23", "offset": 13796842, "length": 221810}, {"name": "contig_73", "offset": 14018652, "length": 215733}, {"name": "contig_22", "offset": 14234385, "length": 214881}, {"name": "contig_115", "offset": 14449266, "length": 200112}, {"name": "contig_51", "offset": 14649378, "length": 196389}, {"name": "contig_52", "offset": 14845767, "length": 195462}, {"name": "contig_114", "offset": 15041229, "length": 191342}, {"name": "contig_99", "offset": 15232571, "length": 187356}, {"name": "contig_42", "offset": 15419927, "length": 186712}, {"name": "contig_54", "offset": 15606639, "length": 186051}, {"name": "contig_41", "offset": 15792690, "length": 181135}, {"name": "contig_53", "offset": 15973825, "length": 176075}, {"name": "contig_132", "offset": 16149900, "length": 172173}, {"name": "contig_1", "offset": 16322073, "length": 169310}, {"name": "contig_2", "offset": 16491383, "length": 169279}, {"name": "contig_101", "offset": 16660662, "length": 168932}, {"name": "contig_134", "offset": 16829594, "length": 167541}, {"name": "contig_49", "offset": 16997135, "length": 167366}, {"name": "contig_48", "offset": 17164501, "length": 167240}, {"name": "contig_109", "offset": 17331741, "length": 164991}, {"name": "contig_65", "offset": 17496732, "length": 164565}, {"name": "contig_149", "offset": 17661297, "length": 164048}, {"name": "contig_70", "offset": 17825345, "length": 163469}, {"name": "contig_141", "offset": 17988814, "length": 162366}, {"name": "contig_60", "offset": 18151180, "length": 161115}, {"name": "contig_47", "offset": 18312295, "length": 154605}, {"name": "contig_108", "offset": 18466900, "length": 148883}, {"name": "contig_126", "offset": 18615783, "length": 148203}, {"name": "contig_36", "offset": 18763986, "length": 147248}, {"name": "contig_118", "offset": 18911234, "length": 140593}, {"name": "contig_119", "offset": 19051827, "length": 138628}, {"name": "contig_37", "offset": 19190455, "length": 134745}, {"name": "contig_137", "offset": 19325200, "length": 133698}, {"name": "contig_139", "offset": 19458898, "length": 121491}, {"name": "contig_131", "offset": 19580389, "length": 120388}, {"name": "contig_44", "offset": 19700777, "length": 117426}, {"name": "contig_10", "offset": 19818203, "length": 108297}, {"name": "contig_21", "offset": 19926500, "length": 102803}, {"name": "contig_85", "offset": 20029303, "length": 100160}, {"name": "contig_129", "offset": 20129463, "length": 89421}, {"name": "contig_150", "offset": 20218884, "length": 82217}, {"name": "contig_135", "offset": 20301101, "length": 73454}, {"name": "contig_130", "offset": 20374555, "length": 71819}, {"name": "contig_16", "offset": 20446374, "length": 68654}, {"name": "contig_15", "offset": 20515028, "length": 67057}, {"name": "contig_62", "offset": 20582085, "length": 66516}, {"name": "contig_138", "offset": 20648601, "length": 65463}, {"name": "contig_133", "offset": 20714064, "length": 64346}, {"name": "contig_61", "offset": 20778410, "length": 61620}, {"name": "contig_8", "offset": 20840030, "length": 54607}, {"name": "contig_9", "offset": 20894637, "length": 54574}, {"name": "contig_50", "offset": 20949211, "length": 52757}, {"name": "contig_147", "offset": 21001968, "length": 45020}, {"name": "contig_140", "offset": 21046988, "length": 44763}, {"name": "contig_96", "offset": 21091751, "length": 44580}, {"name": "contig_136", "offset": 21136331, "length": 43002}, {"name": "contig_38", "offset": 21179333, "length": 41602}, {"name": "contig_97", "offset": 21220935, "length": 39701}, {"name": "contig_124", "offset": 21260636, "length": 38985}, {"name": "contig_100", "offset": 21299621, "length": 38270}, {"name": "contig_148", "offset": 21337891, "length": 36201}, {"name": "contig_45", "offset": 21374092, "length": 34490}, {"name": "contig_63", "offset": 21408582, "length": 30781}, {"name": "contig_57", "offset": 21439363, "length": 29932}, {"name": "contig_71", "offset": 21469295, "length": 13603}, {"name": "contig_80", "offset": 21482898, "length": 5008}, {"name": "contig_59", "offset": 21487906, "length": 3915}], "seqs_b": [{"name": "ptg000003l", "offset": 11093115, "length": 1529499}, {"name": "ptg000007l", "offset": 9830797, "length": 1262318}, {"name": "ptg000002l", "offset": 8738000, "length": 1092797}, {"name": "ptg000010l", "offset": 7671023, "length": 1066977}, {"name": "ptg000009l", "offset": 6628969, "length": 1042054}, {"name": "ptg000011l", "offset": 5686591, "length": 942378}, {"name": "ptg000012l", "offset": 4869489, "length": 817102}, {"name": "ptg000013l", "offset": 4075229, "length": 794260}, {"name": "ptg000001l", "offset": 3329752, "length": 745477}, {"name": "ptg000005l", "offset": 2630382, "length": 699370}, {"name": "ptg000004l", "offset": 2023716, "length": 606666}, {"name": "ptg000015l", "offset": 1451424, "length": 572292}, {"name": "ptg000014l", "offset": 983219, "length": 468205}, {"name": "ptg000006l", "offset": 648635, "length": 334584}, {"name": "ptg000008l", "offset": 328051, "length": 320584}, {"name": "ptg000016l", "offset": 92688, "length": 235363}, {"name": "ptg000017l", "offset": 0, "length": 92688}], "segments": [{"x0": 16322124, "y0": 3347378, "x1": 16491383, "y1": 3516613, "identity": 98.3944, "strand": "-", "qname": "contig_1", "tname": "ptg000001l", "qstart": 51, "qend": 169310, "tstart": 558616, "tend": 727851}, {"x0": 19818203, "y0": 9029391, "x1": 19926500, "y1": 9137689, "identity": 99.9474, "strand": "-", "qname": "contig_10", "tname": "ptg000002l", "qstart": 0, "qend": 108297, "tstart": 693108, "tend": 801406}, {"x0": 21299621, "y0": 3153154, "x1": 21337891, "y1": 3114886, "identity": 99.953, "strand": "+", "qname": "contig_100", "tname": "ptg000005l", "qstart": 0, "qend": 38270, "tstart": 176598, "tend": 214866}, {"x0": 16660662, "y0": 3142467, "x1": 16829088, "y1": 3310644, "identity": 92.4407, "strand": "-", "qname": "contig_101", "tname": "ptg000005l", "qstart": 0, "qend": 168426, "tstart": 19108, "tend": 187285}, {"x0": 8661466, "y0": 3125132, "x1": 9018132, "y1": 2768466, "identity": 100.0, "strand": "+", "qname": "contig_104", "tname": "ptg000005l", "qstart": 0, "qend": 356666, "tstart": 204620, "tend": 561286}, {"x0": 8293721, "y0": 3125132, "x1": 8619899, "y1": 2815592, "identity": 94.2436, "strand": "+", "qname": "contig_105", "tname": "ptg000005l", "qstart": 0, "qend": 326178, "tstart": 204620, "tend": 514160}, {"x0": 8619893, "y0": 2809679, "x1": 8661465, "y1": 2768467, "identity": 98.5621, "strand": "+", "qname": "contig_105", "tname": "ptg000005l", "qstart": 326172, "qend": 367744, "tstart": 520073, "tend": 561285}, {"x0": 18466900, "y0": 5175627, "x1": 18615783, "y1": 5009352, "identity": 88.8357, "strand": "+", "qname": "contig_108", "tname": "ptg000012l", "qstart": 0, "qend": 148883, "tstart": 510964, "tend": 677239}, {"x0": 17331744, "y0": 5024297, "x1": 17481474, "y1": 4874589, "identity": 99.8704, "strand": "+", "qname": "contig_109", "tname": "ptg000012l", "qstart": 3, "qend": 149733, "tstart": 662294, "tend": 812002}, {"x0": 17481862, "y0": 467628, "x1": 17496732, "y1": 452738, "identity": 98.8016, "strand": "+", "qname": "contig_109", "tname": "ptg000008l", "qstart": 150121, "qend": 164991, "tstart": 181007, "tend": 195897}, {"x0": 15041229, "y0": 5144608, "x1": 15232571, "y1": 5335914, "identity": 99.9096, "strand": "-", "qname": "contig_114", "tname": "ptg000012l", "qstart": 0, "qend": 191342, "tstart": 350677, "tend": 541983}, {"x0": 14449266, "y0": 5142446, "x1": 14649378, "y1": 5340455, "identity": 98.4614, "strand": "-", "qname": "contig_115", "tname": "ptg000012l", "qstart": 0, "qend": 200112, "tstart": 346136, "tend": 544145}, {"x0": 18911235, "y0": 8737957, "x1": 19051827, "y1": 8596434, "identity": 98.1856, "strand": "+", "qname": "contig_118", "tname": "ptg000010l", "qstart": 1, "qend": 140593, "tstart": 43, "tend": 141566}, {"x0": 19051827, "y0": 8599385, "x1": 19190438, "y1": 8737971, "identity": 99.8277, "strand": "-", "qname": "contig_119", "tname": "ptg000010l", "qstart": 0, "qend": 138611, "tstart": 29, "tend": 138615}, {"x0": 9360953, "y0": 4867413, "x1": 9703746, "y1": 4524620, "identity": 100.0, "strand": "+", "qname": "contig_121", "tname": "ptg000013l", "qstart": 0, "qend": 342793, "tstart": 2076, "tend": 344869}, {"x0": 9703746, "y0": 4867413, "x1": 9892539, "y1": 4672766, "identity": 96.1702, "strand": "+", "qname": "contig_122", "tname": "ptg000013l", "qstart": 0, "qend": 188793, "tstart": 2076, "tend": 196723}, {"x0": 9888445, "y0": 4644325, "x1": 9920761, "y1": 4676675, "identity": 98.802, "strand": "-", "qname": "contig_122", "tname": "ptg000013l", "qstart": 184699, "qend": 217015, "tstart": 192814, "tend": 225164}, {"x0": 9916734, "y0": 4648564, "x1": 10040379, "y1": 4524623, "identity": 99.0723, "strand": "+", "qname": "contig_122", "tname": "ptg000013l", "qstart": 212988, "qend": 336633, "tstart": 220925, "tend": 344866}, {"x0": 13110892, "y0": 2042503, "x1": 13118212, "y1": 2049828, "identity": 98.7742, "strand": "-", "qname": "contig_123", "tname": "ptg000004l", "qstart": 237, "qend": 7557, "tstart": 580554, "tend": 587879}, {"x0": 13114160, "y0": 12620369, "x1": 13138694, "y1": 12595927, "identity": 98.7265, "strand": "+", "qname": "contig_123", "tname": "ptg000003l", "qstart": 3505, "qend": 28039, "tstart": 2245, "tend": 26687}, {"x0": 13180155, "y0": 6810613, "x1": 13186111, "y1": 6816569, "identity": 99.3116, "strand": "-", "qname": "contig_123", "tname": "ptg000009l", "qstart": 69500, "qend": 75456, "tstart": 854454, "tend": 860410}, {"x0": 13186310, "y0": 5511153, "x1": 13342016, "y1": 5355162, "identity": 99.1281, "strand": "+", "qname": "contig_123", "tname": "ptg000012l", "qstart": 75655, "qend": 231361, "tstart": 175438, "tend": 331429}, {"x0": 21260636, "y0": 1831762, "x1": 21299621, "y1": 1792779, "identity": 99.9846, "strand": "+", "qname": "contig_124", "tname": "ptg000015l", "qstart": 0, "qend": 38985, "tstart": 191954, "tend": 230937}, {"x0": 18615783, "y0": 1934163, "x1": 18763986, "y1": 1780029, "identity": 96.0846, "strand": "+", "qname": "contig_126", "tname": "ptg000015l", "qstart": 0, "qend": 148203, "tstart": 89553, "tend": 243687}, {"x0": 10702709, "y0": 1780030, "x1": 11031164, "y1": 1451574, "identity": 99.9997, "strand": "+", "qname": "contig_127", "tname": "ptg000015l", "qstart": 0, "qend": 328455, "tstart": 243686, "tend": 572142}, {"x0": 10372552, "y0": 1780028, "x1": 10612159, "y1": 1542603, "identity": 93.2855, "strand": "+", "qname": "contig_128", "tname": "ptg000015l", "qstart": 1, "qend": 239608, "tstart": 243688, "tend": 481113}, {"x0": 10612626, "y0": 1541926, "x1": 10702425, "y1": 1458674, "identity": 91.5666, "strand": "+", "qname": "contig_128", "tname": "ptg000015l", "qstart": 240075, "qend": 329874, "tstart": 481790, "tend": 565042}, {"x0": 20129463, "y0": 1934162, "x1": 20218873, "y1": 2023572, "identity": 100.0, "strand": "-", "qname": "contig_129", "tname": "ptg000015l", "qstart": 0, "qend": 89410, "tstart": 144, "tend": 89554}, {"x0": 20374574, "y0": 1934165, "x1": 20421070, "y1": 1980659, "identity": 99.4647, "strand": "-", "qname": "contig_130", "tname": "ptg000015l", "qstart": 19, "qend": 46515, "tstart": 43057, "tend": 89551}, {"x0": 20426158, "y0": 1009355, "x1": 20446354, "y1": 983367, "identity": 73.7913, "strand": "+", "qname": "contig_130", "tname": "ptg000014l", "qstart": 51603, "qend": 71799, "tstart": 442069, "tend": 468057}, {"x0": 19580392, "y0": 3516616, "x1": 19700777, "y1": 3636997, "identity": 99.9776, "strand": "-", "qname": "contig_131", "tname": "ptg000001l", "qstart": 3, "qend": 120388, "tstart": 438232, "tend": 558613}, {"x0": 16149911, "y0": 8738277, "x1": 16322073, "y1": 8910438, "identity": 99.9965, "strand": "-", "qname": "contig_132", "tname": "ptg000002l", "qstart": 11, "qend": 172173, "tstart": 920359, "tend": 1092520}, {"x0": 20714064, "y0": 8910438, "x1": 20778410, "y1": 8974784, "identity": 99.927, "strand": "-", "qname": "contig_133", "tname": "ptg000002l", "qstart": 0, "qend": 64346, "tstart": 856013, "tend": 920359}, {"x0": 16829596, "y0": 8910437, "x1": 16889633, "y1": 8844647, "identity": 90.5382, "strand": "+", "qname": "contig_134", "tname": "ptg000002l", "qstart": 2, "qend": 60039, "tstart": 920360, "tend": 986150}, {"x0": 16889616, "y0": 8844599, "x1": 16997127, "y1": 8738138, "identity": 98.3593, "strand": "+", "qname": "contig_134", "tname": "ptg000002l", "qstart": 60022, "qend": 167533, "tstart": 986198, "tend": 1092659}, {"x0": 20301101, "y0": 9204746, "x1": 20374555, "y1": 9278198, "identity": 99.9946, "strand": "-", "qname": "contig_135", "tname": "ptg000002l", "qstart": 0, "qend": 73454, "tstart": 552599, "tend": 626051}, {"x0": 21136331, "y0": 8628294, "x1": 21179333, "y1": 8585264, "identity": 99.8257, "strand": "+", "qname": "contig_136", "tname": "ptg000010l", "qstart": 0, "qend": 43002, "tstart": 109706, "tend": 152736}, {"x0": 19325200, "y0": 5820367, "x1": 19458898, "y1": 5686669, "identity": 99.9978, "strand": "+", "qname": "contig_137", "tname": "ptg000011l", "qstart": 0, "qend": 133698, "tstart": 808602, "tend": 942300}, {"x0": 20648601, "y0": 6967804, "x1": 20714064, "y1": 7033268, "identity": 99.9985, "strand": "-", "qname": "contig_138", "tname": "ptg000009l", "qstart": 0, "qend": 65463, "tstart": 637755, "tend": 703219}, {"x0": 19458898, "y0": 7033268, "x1": 19580389, "y1": 7154749, "identity": 99.9671, "strand": "-", "qname": "contig_139", "tname": "ptg000009l", "qstart": 0, "qend": 121491, "tstart": 516274, "tend": 637755}, {"x0": 21046988, "y0": 2177590, "x1": 21091751, "y1": 2222347, "identity": 99.971, "strand": "-", "qname": "contig_140", "tname": "ptg000004l", "qstart": 0, "qend": 44763, "tstart": 408035, "tend": 452792}, {"x0": 17988814, "y0": 2430032, "x1": 18151180, "y1": 2592398, "identity": 99.9975, "strand": "-", "qname": "contig_141", "tname": "ptg000004l", "qstart": 0, "qend": 162366, "tstart": 37984, "tend": 200350}, {"x0": 4005335, "y0": 10522013, "x1": 4576343, "y1": 11093026, "identity": 99.9968, "strand": "-", "qname": "contig_143", "tname": "ptg000007l", "qstart": 1, "qend": 571009, "tstart": 89, "tend": 571102}, {"x0": 4576359, "y0": 328110, "x1": 4660809, "y1": 412560, "identity": 99.9716, "strand": "-", "qname": "contig_143", "tname": "ptg000008l", "qstart": 571025, "qend": 655475, "tstart": 236075, "tend": 320525}, {"x0": 11356728, "y0": 11106728, "x1": 11652201, "y1": 11402201, "identity": 100.0, "strand": "-", "qname": "contig_144", "tname": "ptg000003l", "qstart": 0, "qend": 295473, "tstart": 1220413, "tend": 1515886}, {"x0": 6221204, "y0": 4079283, "x1": 6666544, "y1": 4524620, "identity": 99.9915, "strand": "-", "qname": "contig_145", "tname": "ptg000013l", "qstart": 0, "qend": 445340, "tstart": 344869, "tend": 790206}, {"x0": 21001968, "y0": 12577614, "x1": 21046988, "y1": 12622613, "identity": 99.9445, "strand": "-", "qname": "contig_147", "tname": "ptg000003l", "qstart": 0, "qend": 45020, "tstart": 1, "tend": 45000}, {"x0": 21337891, "y0": 5175620, "x1": 21374092, "y1": 5139418, "identity": 99.9696, "strand": "+", "qname": "contig_148", "tname": "ptg000012l", "qstart": 0, "qend": 36201, "tstart": 510971, "tend": 547173}, {"x0": 17661297, "y0": 5173405, "x1": 17825345, "y1": 5009352, "identity": 99.9933, "strand": "+", "qname": "contig_149", "tname": "ptg000012l", "qstart": 0, "qend": 164048, "tstart": 513186, "tend": 677239}, {"x0": 20515028, "y0": 9137689, "x1": 20582085, "y1": 9204746, "identity": 100.0, "strand": "-", "qname": "contig_15", "tname": "ptg000002l", "qstart": 0, "qend": 67057, "tstart": 626051, "tend": 693108}, {"x0": 20218884, "y0": 5305476, "x1": 20301101, "y1": 5387693, "identity": 99.9781, "strand": "-", "qname": "contig_150", "tname": "ptg000012l", "qstart": 0, "qend": 82217, "tstart": 298898, "tend": 381115}, {"x0": 20446377, "y0": 9137692, "x1": 20463698, "y1": 9153054, "identity": 88.0351, "strand": "-", "qname": "contig_16", "tname": "ptg000002l", "qstart": 3, "qend": 17324, "tstart": 677743, "tend": 693105}, {"x0": 20463693, "y0": 9153392, "x1": 20515027, "y1": 9204745, "identity": 99.2202, "strand": "-", "qname": "contig_16", "tname": "ptg000002l", "qstart": 17319, "qend": 68653, "tstart": 626052, "tend": 677405}, {"x0": 12174774, "y0": 9278198, "x1": 12409696, "y1": 9513122, "identity": 99.9991, "strand": "-", "qname": "contig_17", "tname": "ptg000002l", "qstart": 0, "qend": 234922, "tstart": 317675, "tend": 552599}, {"x0": 13342016, "y0": 9278192, "x1": 13571464, "y1": 9513123, "identity": 86.8817, "strand": "-", "qname": "contig_18", "tname": "ptg000002l", "qstart": 0, "qend": 229448, "tstart": 317674, "tend": 552605}, {"x0": 16491383, "y0": 3516610, "x1": 16660612, "y1": 3347387, "identity": 99.9852, "strand": "+", "qname": "contig_2", "tname": "ptg000001l", "qstart": 0, "qend": 169229, "tstart": 558619, "tend": 727842}, {"x0": 19926500, "y0": 9513122, "x1": 20029303, "y1": 9615915, "identity": 99.9056, "strand": "-", "qname": "contig_21", "tname": "ptg000002l", "qstart": 0, "qend": 102803, "tstart": 214882, "tend": 317675}, {"x0": 14234385, "y0": 9615915, "x1": 14449266, "y1": 9830796, "identity": 99.9986, "strand": "-", "qname": "contig_22", "tname": "ptg000002l", "qstart": 0, "qend": 214881, "tstart": 1, "tend": 214882}, {"x0": 13796842, "y0": 9621834, "x1": 14011782, "y1": 9824931, "identity": 93.0773, "strand": "-", "qname": "contig_23", "tname": "ptg000002l", "qstart": 0, "qend": 214940, "tstart": 5866, "tend": 208963}, {"x0": 14012075, "y0": 9825119, "x1": 14015257, "y1": 9828324, "identity": 98.162, "strand": "-", "qname": "contig_23", "tname": "ptg000002l", "qstart": 215233, "qend": 218415, "tstart": 2473, "tend": 5678}, {"x0": 14016264, "y0": 9828287, "x1": 14018650, "y1": 9830701, "identity": 93.968, "strand": "-", "qname": "contig_23", "tname": "ptg000002l", "qstart": 219422, "qend": 221808, "tstart": 96, "tend": 2510}, {"x0": 5224048, "y0": 8615509, "x1": 5724694, "y1": 8114863, "identity": 99.9996, "strand": "+", "qname": "contig_24", "tname": "ptg000010l", "qstart": 0, "qend": 500646, "tstart": 122491, "tend": 623137}, {"x0": 5724694, "y0": 8617174, "x1": 6221197, "y1": 8114870, "identity": 98.01, "strand": "+", "qname": "contig_25", "tname": "ptg000010l", "qstart": 0, "qend": 496503, "tstart": 120826, "tend": 623130}, {"x0": 6666546, "y0": 8114863, "x1": 7110377, "y1": 7671028, "identity": 99.9743, "strand": "+", "qname": "contig_26", "tname": "ptg000010l", "qstart": 0, "qend": 443831, "tstart": 623137, "tend": 1066972}, {"x0": 3206276, "y0": 6628968, "x1": 3677126, "y1": 6154159, "identity": 95.6236, "strand": "+", "qname": "contig_29", "tname": "ptg000011l", "qstart": 54, "qend": 470904, "tstart": 1, "tend": 474810}, {"x0": 3677709, "y0": 6153229, "x1": 4005334, "y1": 5820742, "identity": 97.0557, "strand": "+", "qname": "contig_29", "tname": "ptg000011l", "qstart": 471487, "qend": 799112, "tstart": 475740, "tend": 808227}, {"x0": 2397605, "y0": 5820367, "x1": 3206208, "y1": 6628968, "identity": 99.9975, "strand": "-", "qname": "contig_30", "tname": "ptg000011l", "qstart": 0, "qend": 808603, "tstart": 1, "tend": 808602}, {"x0": 10040379, "y0": 648646, "x1": 10370458, "y1": 978777, "identity": 99.9046, "strand": "-", "qname": "contig_34", "tname": "ptg000006l", "qstart": 0, "qend": 330079, "tstart": 4442, "tend": 334573}, {"x0": 10371131, "y0": 8739268, "x1": 10372483, "y1": 8738045, "identity": 83.3211, "strand": "+", "qname": "contig_34", "tname": "ptg000002l", "qstart": 330752, "qend": 332104, "tstart": 1091529, "tend": 1092752}, {"x0": 11031201, "y0": 983385, "x1": 11356728, "y1": 1308913, "identity": 99.9883, "strand": "-", "qname": "contig_35", "tname": "ptg000014l", "qstart": 26, "qend": 325553, "tstart": 142511, "tend": 468039}, {"x0": 18763987, "y0": 6629019, "x1": 18911234, "y1": 6776261, "identity": 99.9823, "strand": "-", "qname": "contig_36", "tname": "ptg000009l", "qstart": 1, "qend": 147248, "tstart": 894762, "tend": 1042004}, {"x0": 19190455, "y0": 5551647, "x1": 19325167, "y1": 5686344, "identity": 99.9822, "strand": "-", "qname": "contig_37", "tname": "ptg000012l", "qstart": 0, "qend": 134712, "tstart": 247, "tend": 134944}, {"x0": 21179333, "y0": 5564452, "x1": 21220935, "y1": 5522850, "identity": 100.0, "strand": "+", "qname": "contig_38", "tname": "ptg000012l", "qstart": 0, "qend": 41602, "tstart": 122139, "tend": 163741}, {"x0": 15792690, "y0": 6786669, "x1": 15973825, "y1": 6967804, "identity": 99.9989, "strand": "-", "qname": "contig_41", "tname": "ptg000009l", "qstart": 0, "qend": 181135, "tstart": 703219, "tend": 884354}, {"x0": 15419927, "y0": 5541243, "x1": 15606639, "y1": 5354548, "identity": 99.9518, "strand": "+", "qname": "contig_42", "tname": "ptg000012l", "qstart": 0, "qend": 186712, "tstart": 145348, "tend": 332043}, {"x0": 13571468, "y0": 6967802, "x1": 13728260, "y1": 6816576, "identity": 95.3925, "strand": "+", "qname": "contig_43", "tname": "ptg000009l", "qstart": 3, "qend": 156795, "tstart": 703221, "tend": 854447}, {"x0": 13770433, "y0": 12595927, "x1": 13796829, "y1": 12622569, "identity": 96.5638, "strand": "-", "qname": "contig_43", "tname": "ptg000003l", "qstart": 198968, "qend": 225364, "tstart": 45, "tend": 26687}, {"x0": 19700779, "y0": 7033270, "x1": 19818203, "y1": 7151045, "identity": 99.36, "strand": "-", "qname": "contig_44", "tname": "ptg000009l", "qstart": 2, "qend": 117426, "tstart": 519978, "tend": 637753}, {"x0": 21374092, "y0": 7219978, "x1": 21408582, "y1": 7254468, "identity": 99.9884, "strand": "-", "qname": "contig_45", "tname": "ptg000009l", "qstart": 0, "qend": 34490, "tstart": 416555, "tend": 451045}, {"x0": 18312295, "y0": 7124070, "x1": 18466900, "y1": 7278668, "identity": 99.9664, "strand": "-", "qname": "contig_47", "tname": "ptg000009l", "qstart": 0, "qend": 154605, "tstart": 392355, "tend": 546953}, {"x0": 17164501, "y0": 7254469, "x1": 17331741, "y1": 7421816, "identity": 99.9247, "strand": "-", "qname": "contig_48", "tname": "ptg000009l", "qstart": 0, "qend": 167240, "tstart": 249207, "tend": 416554}, {"x0": 16997135, "y0": 7254469, "x1": 17164501, "y1": 7421815, "identity": 99.7132, "strand": "-", "qname": "contig_49", "tname": "ptg000009l", "qstart": 0, "qend": 167366, "tstart": 249208, "tend": 416554}, {"x0": 7110404, "y0": 3636997, "x1": 7548624, "y1": 4075228, "identity": 99.9952, "strand": "-", "qname": "contig_5", "tname": "ptg000001l", "qstart": 0, "qend": 438220, "tstart": 1, "tend": 438232}, {"x0": 20949211, "y0": 7421816, "x1": 21001968, "y1": 7474573, "identity": 99.9848, "strand": "-", "qname": "contig_50", "tname": "ptg000009l", "qstart": 0, "qend": 52757, "tstart": 196450, "tend": 249207}, {"x0": 14649378, "y0": 7474573, "x1": 14845767, "y1": 7670962, "identity": 100.0, "strand": "-", "qname": "contig_51", "tname": "ptg000009l", "qstart": 0, "qend": 196389, "tstart": 61, "tend": 196450}, {"x0": 14845770, "y0": 7474576, "x1": 14979866, "y1": 7608795, "identity": 99.3977, "strand": "-", "qname": "contig_52", "tname": "ptg000009l", "qstart": 3, "qend": 134099, "tstart": 62228, "tend": 196447}, {"x0": 14991599, "y0": 7610736, "x1": 15040241, "y1": 7659340, "identity": 99.2807, "strand": "-", "qname": "contig_52", "tname": "ptg000009l", "qstart": 145832, "qend": 194474, "tstart": 11683, "tend": 60287}, {"x0": 15040143, "y0": 329099, "x1": 15041229, "y1": 328103, "identity": 83.9562, "strand": "+", "qname": "contig_52", "tname": "ptg000008l", "qstart": 194376, "qend": 195462, "tstart": 319536, "tend": 320532}, {"x0": 15973826, "y0": 2023745, "x1": 15979125, "y1": 2029217, "identity": 89.851, "strand": "-", "qname": "contig_53", "tname": "ptg000004l", "qstart": 1, "qend": 5300, "tstart": 601165, "tend": 606637}, {"x0": 15980010, "y0": 2042973, "x1": 15983083, "y1": 2045628, "identity": 79.5839, "strand": "-", "qname": "contig_53", "tname": "ptg000004l", "qstart": 6185, "qend": 9258, "tstart": 584754, "tend": 587409}, {"x0": 15983086, "y0": 2045973, "x1": 15985615, "y1": 2048509, "identity": 94.4138, "strand": "-", "qname": "contig_53", "tname": "ptg000004l", "qstart": 9261, "qend": 11790, "tstart": 581873, "tend": 584409}, {"x0": 15987575, "y0": 2052873, "x1": 16055638, "y1": 2121267, "identity": 98.5532, "strand": "-", "qname": "contig_53", "tname": "ptg000004l", "qstart": 13750, "qend": 81813, "tstart": 509115, "tend": 577509}, {"x0": 16055979, "y0": 2121262, "x1": 16098714, "y1": 2163948, "identity": 97.6058, "strand": "-", "qname": "contig_53", "tname": "ptg000004l", "qstart": 82154, "qend": 124889, "tstart": 466434, "tend": 509120}, {"x0": 16104977, "y0": 2163943, "x1": 16149900, "y1": 2209178, "identity": 76.1318, "strand": "-", "qname": "contig_53", "tname": "ptg000004l", "qstart": 131152, "qend": 176075, "tstart": 421204, "tend": 466439}, {"x0": 15606639, "y0": 2209794, "x1": 15792683, "y1": 2023757, "identity": 99.9602, "strand": "+", "qname": "contig_54", "tname": "ptg000004l", "qstart": 0, "qend": 186044, "tstart": 420588, "tend": 606625}, {"x0": 12877521, "y0": 2192977, "x1": 13110655, "y1": 2426110, "identity": 99.997, "strand": "-", "qname": "contig_55", "tname": "ptg000004l", "qstart": 0, "qend": 233134, "tstart": 204272, "tend": 437405}, {"x0": 12643864, "y0": 2191373, "x1": 12877521, "y1": 2426110, "identity": 98.9582, "strand": "-", "qname": "contig_56", "tname": "ptg000004l", "qstart": 0, "qend": 233657, "tstart": 204272, "tend": 439009}, {"x0": 21439363, "y0": 2411795, "x1": 21469295, "y1": 2441728, "identity": 99.9967, "strand": "-", "qname": "contig_57", "tname": "ptg000004l", "qstart": 0, "qend": 29932, "tstart": 188654, "tend": 218587}, {"x0": 21487908, "y0": 2426121, "x1": 21491820, "y1": 2430030, "identity": 99.7444, "strand": "-", "qname": "contig_59", "tname": "ptg000004l", "qstart": 2, "qend": 3914, "tstart": 200352, "tend": 204261}, {"x0": 4660814, "y0": 3637002, "x1": 5057807, "y1": 4045511, "identity": 96.1059, "strand": "-", "qname": "contig_6", "tname": "ptg000001l", "qstart": 5, "qend": 396998, "tstart": 29718, "tend": 438227}, {"x0": 5061209, "y0": 4058782, "x1": 5074810, "y1": 4045509, "identity": 96.8197, "strand": "+", "qname": "contig_6", "tname": "ptg000001l", "qstart": 400400, "qend": 414001, "tstart": 16447, "tend": 29720}, {"x0": 5075281, "y0": 4102911, "x1": 5083441, "y1": 4094789, "identity": 97.1089, "strand": "+", "qname": "contig_6", "tname": "ptg000013l", "qstart": 414472, "qend": 422632, "tstart": 766578, "tend": 774700}, {"x0": 5082564, "y0": 9822255, "x1": 5085373, "y1": 9825063, "identity": 97.8292, "strand": "-", "qname": "contig_6", "tname": "ptg000002l", "qstart": 421755, "qend": 424564, "tstart": 5734, "tend": 8542}, {"x0": 5086003, "y0": 2630420, "x1": 5224048, "y1": 2768466, "identity": 99.9218, "strand": "-", "qname": "contig_6", "tname": "ptg000005l", "qstart": 425194, "qend": 563239, "tstart": 561286, "tend": 699332}, {"x0": 18151180, "y0": 2430034, "x1": 18312295, "y1": 2590456, "identity": 92.1572, "strand": "-", "qname": "contig_60", "tname": "ptg000004l", "qstart": 0, "qend": 161115, "tstart": 39926, "tend": 200348}, {"x0": 20778410, "y0": 2563610, "x1": 20839731, "y1": 2624579, "identity": 98.6557, "strand": "-", "qname": "contig_61", "tname": "ptg000004l", "qstart": 0, "qend": 61321, "tstart": 5803, "tend": 66772}, {"x0": 20582085, "y0": 2563785, "x1": 20648601, "y1": 2630295, "identity": 99.9729, "strand": "-", "qname": "contig_62", "tname": "ptg000004l", "qstart": 0, "qend": 66516, "tstart": 87, "tend": 66597}, {"x0": 21408582, "y0": 1339700, "x1": 21439363, "y1": 1308919, "identity": 100.0, "strand": "+", "qname": "contig_63", "tname": "ptg000014l", "qstart": 0, "qend": 30781, "tstart": 111724, "tend": 142505}, {"x0": 17496733, "y0": 1451393, "x1": 17661297, "y1": 1286841, "identity": 99.9599, "strand": "+", "qname": "contig_65", "tname": "ptg000014l", "qstart": 1, "qend": 164565, "tstart": 31, "tend": 164583}, {"x0": 11652201, "y0": 1308918, "x1": 11922742, "y1": 1031917, "identity": 96.9576, "strand": "+", "qname": "contig_66", "tname": "ptg000014l", "qstart": 0, "qend": 270541, "tstart": 142506, "tend": 419507}, {"x0": 11927108, "y0": 98296, "x1": 11932247, "y1": 93156, "identity": 90.9004, "strand": "+", "qname": "contig_66", "tname": "ptg000016l", "qstart": 274907, "qend": 280046, "tstart": 229755, "tend": 234895}, {"x0": 11931648, "y0": 4862986, "x1": 11938168, "y1": 4869454, "identity": 94.1203, "strand": "-", "qname": "contig_66", "tname": "ptg000013l", "qstart": 279447, "qend": 285967, "tstart": 35, "tend": 6503}, {"x0": 9018140, "y0": 648908, "x1": 9024038, "y1": 656453, "identity": 76.2037, "strand": "-", "qname": "contig_7", "tname": "ptg000006l", "qstart": 8, "qend": 5906, "tstart": 326766, "tend": 334311}, {"x0": 9025237, "y0": 680737, "x1": 9142907, "y1": 787899, "identity": 86.3196, "strand": "-", "qname": "contig_7", "tname": "ptg000006l", "qstart": 7105, "qend": 124775, "tstart": 195320, "tend": 302482}, {"x0": 9143549, "y0": 788646, "x1": 9209546, "y1": 837348, "identity": 72.5169, "strand": "-", "qname": "contig_7", "tname": "ptg000006l", "qstart": 125417, "qend": 191414, "tstart": 145871, "tend": 194573}, {"x0": 9216870, "y0": 838752, "x1": 9275841, "y1": 897389, "identity": 99.0269, "strand": "-", "qname": "contig_7", "tname": "ptg000006l", "qstart": 198738, "qend": 257709, "tstart": 85830, "tend": 144467}, {"x0": 9276311, "y0": 897861, "x1": 9360953, "y1": 983218, "identity": 98.7809, "strand": "-", "qname": "contig_7", "tname": "ptg000006l", "qstart": 258179, "qend": 342821, "tstart": 1, "tend": 85358}, {"x0": 17825345, "y0": 435747, "x1": 17988814, "y1": 630603, "identity": 83.4352, "strand": "-", "qname": "contig_70", "tname": "ptg000008l", "qstart": 0, "qend": 163469, "tstart": 18032, "tend": 212888}, {"x0": 21469295, "y0": 11106725, "x1": 21482898, "y1": 11093116, "identity": 99.9412, "strand": "+", "qname": "contig_71", "tname": "ptg000003l", "qstart": 0, "qend": 13603, "tstart": 1515889, "tend": 1529498}, {"x0": 14018652, "y0": 412570, "x1": 14234385, "y1": 628299, "identity": 99.9968, "strand": "-", "qname": "contig_73", "tname": "ptg000008l", "qstart": 0, "qend": 215733, "tstart": 20336, "tend": 236065}, {"x0": 1206079, "y0": 11402204, "x1": 2397605, "y1": 12595891, "identity": 95.1596, "strand": "-", "qname": "contig_76", "tname": "ptg000003l", "qstart": 3, "qend": 1191529, "tstart": 26723, "tend": 1220410}, {"x0": 0, "y0": 11402201, "x1": 1206076, "y1": 12608285, "identity": 99.9973, "strand": "-", "qname": "contig_77", "tname": "ptg000003l", "qstart": 0, "qend": 1206076, "tstart": 14329, "tend": 1220413}, {"x0": 12409696, "y0": 93051, "x1": 12643864, "y1": 328050, "identity": 99.3834, "strand": "-", "qname": "contig_78", "tname": "ptg000016l", "qstart": 0, "qend": 234168, "tstart": 1, "tend": 235000}, {"x0": 11938194, "y0": 93054, "x1": 11962001, "y1": 116875, "identity": 99.7397, "strand": "-", "qname": "contig_79", "tname": "ptg000016l", "qstart": 0, "qend": 23807, "tstart": 211176, "tend": 234997}, {"x0": 11960463, "y0": 303818, "x1": 12115307, "y1": 154714, "identity": 94.8075, "strand": "+", "qname": "contig_79", "tname": "ptg000016l", "qstart": 22269, "qend": 177113, "tstart": 24233, "tend": 173337}, {"x0": 12130995, "y0": 144221, "x1": 12139318, "y1": 135878, "identity": 97.8912, "strand": "+", "qname": "contig_79", "tname": "ptg000016l", "qstart": 192801, "qend": 201124, "tstart": 183830, "tend": 192173}, {"x0": 12143446, "y0": 121221, "x1": 12174733, "y1": 92704, "identity": 87.8411, "strand": "+", "qname": "contig_79", "tname": "ptg000016l", "qstart": 205252, "qend": 236539, "tstart": 206830, "tend": 235347}, {"x0": 20840030, "y0": 8974784, "x1": 20894637, "y1": 9029391, "identity": 100.0, "strand": "-", "qname": "contig_8", "tname": "ptg000002l", "qstart": 0, "qend": 54607, "tstart": 801406, "tend": 856013}, {"x0": 21482898, "y0": 10442014, "x1": 21487906, "y1": 10437008, "identity": 99.9201, "strand": "+", "qname": "contig_80", "tname": "ptg000007l", "qstart": 0, "qend": 5008, "tstart": 651101, "tend": 656107}, {"x0": 7548624, "y0": 10310809, "x1": 7923669, "y1": 9935641, "identity": 99.9288, "strand": "+", "qname": "contig_83", "tname": "ptg000007l", "qstart": 0, "qend": 375045, "tstart": 782306, "tend": 1157474}, {"x0": 7923669, "y0": 10317222, "x1": 8293721, "y1": 9935636, "identity": 96.6091, "strand": "+", "qname": "contig_84", "tname": "ptg000007l", "qstart": 0, "qend": 370052, "tstart": 775893, "tend": 1157479}, {"x0": 20029303, "y0": 9964979, "x1": 20129463, "y1": 9863891, "identity": 98.9171, "strand": "+", "qname": "contig_85", "tname": "ptg000007l", "qstart": 0, "qend": 100160, "tstart": 1128136, "tend": 1229224}, {"x0": 20894639, "y0": 8974786, "x1": 20949209, "y1": 9029389, "identity": 99.3227, "strand": "-", "qname": "contig_9", "tname": "ptg000002l", "qstart": 2, "qend": 54572, "tstart": 801408, "tend": 856011}, {"x0": 21091751, "y0": 9875387, "x1": 21136331, "y1": 9830822, "identity": 99.9462, "strand": "+", "qname": "contig_96", "tname": "ptg000007l", "qstart": 0, "qend": 44580, "tstart": 1217728, "tend": 1262293}, {"x0": 21220935, "y0": 9875385, "x1": 21260414, "y1": 9835912, "identity": 98.9522, "strand": "+", "qname": "contig_97", "tname": "ptg000007l", "qstart": 0, "qend": 39479, "tstart": 1217730, "tend": 1257203}, {"x0": 15232646, "y0": 3329752, "x1": 15419927, "y1": 3142475, "identity": 99.9957, "strand": "+", "qname": "contig_99", "tname": "ptg000005l", "qstart": 75, "qend": 187356, "tstart": 0, "tend": 187277}]};
+
+const svg = document.getElementById("plot");
+const container = document.getElementById("plot-container");
+const tooltip = document.getElementById("tooltip");
+const NS = "http://www.w3.org/2000/svg";
+
+document.getElementById("counts").textContent =
+    DATA.segments.length.toLocaleString() + " alignment blocks  ·  " +
+    DATA.seqs_a.length.toLocaleString() + " seqs in A  ·  " +
+    DATA.seqs_b.length.toLocaleString() + " seqs in B";
+
+let vb = { x: 0, y: 0, w: DATA.total_a, h: DATA.total_b };
+const FULL = { x: 0, y: 0, w: DATA.total_a, h: DATA.total_b };
+
+function setViewBox() {
+  svg.setAttribute("viewBox", vb.x + " " + vb.y + " " + vb.w + " " + vb.h);
+}
+setViewBox();
+
+// RdYlGn-ish 11-stop interpolation (ColorBrewer RdYlGn), input 0-100
+const STOPS = [
+  [165,0,38],[215,48,39],[244,109,67],[253,174,97],[254,224,139],[255,255,191],
+  [217,239,139],[166,217,106],[102,189,99],[26,152,80],[0,104,55]
+];
+function identityColor(pct, minPct) {
+  let t = (pct - minPct) / (100 - minPct || 1);
+  t = Math.max(0, Math.min(1, t));
+  const scaled = t * (STOPS.length - 1);
+  const i = Math.min(STOPS.length - 2, Math.floor(scaled));
+  const f = scaled - i;
+  const c0 = STOPS[i], c1 = STOPS[i + 1];
+  const r = Math.round(c0[0] + (c1[0] - c0[0]) * f);
+  const g = Math.round(c0[1] + (c1[1] - c0[1]) * f);
+  const b = Math.round(c0[2] + (c1[2] - c0[2]) * f);
+  return "rgb(" + r + "," + g + "," + b + ")";
+}
+
+const minIdentitySeen = DATA.segments.length
+    ? Math.min.apply(null, DATA.segments.map(s => s.identity)) : 0;
+
+const lenByNameA = {}; for (const s of DATA.seqs_a) lenByNameA[s.name] = s.length;
+const lenByNameB = {}; for (const s of DATA.seqs_b) lenByNameB[s.name] = s.length;
+const maxSeqLen = Math.max(
+  DATA.seqs_a.length ? Math.max.apply(null, DATA.seqs_a.map(s => s.length)) : 0,
+  DATA.seqs_b.length ? Math.max.apply(null, DATA.seqs_b.map(s => s.length)) : 0
+);
+
+// ── Static layer: gridlines + segments (drawn once; zoom/pan is just a viewBox change) ──
+const staticLayer = document.createElementNS(NS, "g");
+svg.appendChild(staticLayer);
+
+function addLine(x1, y1, x2, y2, cls, extra) {
+  const el = document.createElementNS(NS, "line");
+  el.setAttribute("x1", x1); el.setAttribute("y1", y1);
+  el.setAttribute("x2", x2); el.setAttribute("y2", y2);
+  el.setAttribute("class", cls);
+  if (extra) for (const k in extra) el.setAttribute(k, extra[k]);
+  staticLayer.appendChild(el);
+  return el;
+}
+
+const gridEls = [];
+for (const s of DATA.seqs_a) {
+  const el = addLine(s.offset, 0, s.offset, DATA.total_b, "gridline");
+  gridEls.push({ el: el, axis: "a", name: s.name, length: s.length });
+}
+for (const s of DATA.seqs_b) {
+  const el = addLine(0, s.offset, DATA.total_a, s.offset, "gridline");
+  gridEls.push({ el: el, axis: "b", name: s.name, length: s.length });
+}
+
+const segEls = [];
+for (const seg of DATA.segments) {
+  const el = addLine(seg.x0, seg.y0, seg.x1, seg.y1, "seg", {
+    stroke: identityColor(seg.identity, minIdentitySeen),
+  });
+  el.dataset.qname = seg.qname; el.dataset.tname = seg.tname;
+  el.dataset.qstart = seg.qstart; el.dataset.qend = seg.qend;
+  el.dataset.tstart = seg.tstart; el.dataset.tend = seg.tend;
+  el.dataset.identity = seg.identity.toFixed(2);
+  el.dataset.strand = seg.strand;
+  // Real alignment blocks are often only 1-2 screen px wide/tall at typical zoom
+  // levels, especially zoomed out over a whole genome — a plain 1.6px stroke is too
+  // thin a target to reliably hover/click. Layer an invisible, much wider "hit line"
+  // on top that drives hover + click, while the thin visible line stays untouched.
+  const hitEl = addLine(seg.x0, seg.y0, seg.x1, seg.y1, "seg-hit");
+  hitEl.addEventListener("mouseenter", (e) => { el.classList.add("hover"); showTooltip(el, e); });
+  hitEl.addEventListener("mousemove", moveTooltip);
+  hitEl.addEventListener("mouseleave", () => { el.classList.remove("hover"); hideTooltip(); });
+  hitEl.addEventListener("click", () => {
+    addToBasket("a", seg.qname, lenByNameA[seg.qname] || 0);
+    addToBasket("b", seg.tname, lenByNameB[seg.tname] || 0);
+    renderBasket();
+  });
+  segEls.push({
+    el: el, hitEl: hitEl, identity: seg.identity,
+    lenA: lenByNameA[seg.qname] || 0, lenB: lenByNameB[seg.tname] || 0,
+  });
+}
+
+function showTooltip(el, e) {
+  const d = el.dataset;
+  tooltip.innerHTML =
+      "<b>A:</b> " + d.qname + ":" + Number(d.qstart).toLocaleString() + "-" + Number(d.qend).toLocaleString() + "<br>" +
+      "<b>B:</b> " + d.tname + ":" + Number(d.tstart).toLocaleString() + "-" + Number(d.tend).toLocaleString() + "<br>" +
+      "<b>identity:</b> " + d.identity + "%  &middot;  <b>strand:</b> " + d.strand;
+  tooltip.style.display = "block";
+  moveTooltip(e);
+}
+function moveTooltip(e) {
+  tooltip.style.left = (e.clientX + 14) + "px";
+  tooltip.style.top = (e.clientY + 14) + "px";
+}
+function hideTooltip() { tooltip.style.display = "none"; }
+
+// ── Basket: collect sequence IDs of interest, export as ID list or FASTA ──
+const basket = new Map(); // key "a|name" or "b|name" -> {axis, name, length}
+const basketList = document.getElementById("basketList");
+const basketEmpty = document.getElementById("basketEmpty");
+let fastaMapA = null, fastaMapB = null;
+
+function addToBasket(axis, name, length) {
+  basket.set(axis + "|" + name, { axis: axis, name: name, length: length });
+}
+function removeFromBasket(key) {
+  basket.delete(key);
+  renderBasket();
+}
+function renderBasket() {
+  basketList.innerHTML = "";
+  basketEmpty.style.display = basket.size ? "none" : "block";
+  const sorted = Array.from(basket.entries()).sort((x, y) =>
+      x[1].axis === y[1].axis ? x[1].name.localeCompare(y[1].name) : x[1].axis.localeCompare(y[1].axis));
+  for (const [key, item] of sorted) {
+    const li = document.createElement("li");
+    const tag = document.createElement("span");
+    tag.className = "tag " + item.axis;
+    tag.textContent = item.axis.toUpperCase();
+    const label = document.createElement("span");
+    label.style.flex = "1 1 auto"; label.style.overflow = "hidden";
+    label.style.textOverflow = "ellipsis"; label.style.whiteSpace = "nowrap";
+    label.title = item.name + " (" + item.length.toLocaleString() + " bp)";
+    label.textContent = item.name;
+    const left = document.createElement("span");
+    left.style.display = "flex"; left.style.alignItems = "center"; left.style.overflow = "hidden";
+    left.appendChild(tag); left.appendChild(label);
+    const rm = document.createElement("button");
+    rm.className = "rm"; rm.textContent = "×"; rm.title = "Remove";
+    rm.addEventListener("click", () => removeFromBasket(key));
+    li.appendChild(left); li.appendChild(rm);
+    basketList.appendChild(li);
+  }
+  // highlight basketed gridlines/segments
+  for (const g of gridEls) {
+    g.el.classList.toggle("basketed", basket.has(g.axis + "|" + g.name));
+  }
+  for (const s of segEls) {
+    const d = s.el.dataset;
+    const on = basket.has("a|" + d.qname) && basket.has("b|" + d.tname);
+    s.el.classList.toggle("basketed", on);
+  }
+}
+document.getElementById("basketClear").addEventListener("click", () => {
+  basket.clear();
+  renderBasket();
+});
+document.getElementById("basketDownloadIds").addEventListener("click", () => {
+  if (!basket.size) return;
+  const lines = ["# axis\tseqID\tlength_bp"];
+  const sorted = Array.from(basket.values()).sort((x, y) =>
+      x.axis === y.axis ? x.name.localeCompare(y.name) : x.axis.localeCompare(y.axis));
+  for (const item of sorted) lines.push(item.axis.toUpperCase() + "\t" + item.name + "\t" + item.length);
+  triggerDownload(lines.join("\n") + "\n", "YithCOMPASM_basket_ids.txt", "text/plain");
+});
+
+function parseFasta(text) {
+  const map = new Map();
+  let name = null, chunks = [];
+  const lines = text.split(/\r?\n/);
+  for (const line of lines) {
+    if (line.startsWith(">")) {
+      if (name !== null) map.set(name, chunks.join(""));
+      name = line.slice(1).trim().split(/\s+/)[0];
+      chunks = [];
+    } else if (name !== null) {
+      chunks.push(line.trim());
+    }
+  }
+  if (name !== null) map.set(name, chunks.join(""));
+  return map;
+}
+function wrapSeq(seq, width) {
+  width = width || 60;
+  const out = [];
+  for (let i = 0; i < seq.length; i += width) out.push(seq.slice(i, i + width));
+  return out.join("\n");
+}
+function triggerDownload(content, filename, mime) {
+  const blob = new Blob([content], { type: mime || "text/plain" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function wireFastaInput(inputEl, statusEl, setMap) {
+  inputEl.addEventListener("change", () => {
+    const file = inputEl.files[0];
+    if (!file) return;
+    statusEl.textContent = "Loading " + file.name + "…";
+    const reader = new FileReader();
+    reader.onload = () => {
+      const map = parseFasta(reader.result);
+      setMap(map);
+      statusEl.textContent = "Loaded " + file.name + " (" + map.size.toLocaleString() + " sequences)";
+    };
+    reader.onerror = () => { statusEl.textContent = "Failed to read " + file.name; };
+    reader.readAsText(file);
+  });
+}
+wireFastaInput(document.getElementById("fastaAInput"), document.getElementById("fastaAStatus"),
+    (m) => { fastaMapA = m; });
+wireFastaInput(document.getElementById("fastaBInput"), document.getElementById("fastaBStatus"),
+    (m) => { fastaMapB = m; });
+
+document.getElementById("basketDownloadFasta").addEventListener("click", () => {
+  if (!basket.size) { alert("Basket is empty — click alignment lines to add sequences first."); return; }
+  const sorted = Array.from(basket.values()).sort((x, y) =>
+      x.axis === y.axis ? x.name.localeCompare(y.name) : x.axis.localeCompare(y.axis));
+  const parts = [];
+  const missing = [];
+  for (const item of sorted) {
+    const map = item.axis === "a" ? fastaMapA : fastaMapB;
+    if (!map) { missing.push(item.name + " (assembly " + item.axis.toUpperCase() + " FASTA not loaded)"); continue; }
+    const seq = map.get(item.name);
+    if (seq === undefined) { missing.push(item.name + " (not found in loaded FASTA)"); continue; }
+    parts.push(">" + item.name + "\n" + wrapSeq(seq) + "\n");
+  }
+  if (missing.length) alert("Skipped " + missing.length + " sequence(s):\n" + missing.join("\n"));
+  if (!parts.length) return;
+  triggerDownload(parts.join(""), "YithCOMPASM_basket_sequences.fasta", "text/plain");
+});
+
+// ── Filters: min sequence length + min %identity ──
+const lenFilterInput = document.getElementById("lenFilter");
+const idFilterInput = document.getElementById("idFilter");
+const lenVal = document.getElementById("lenVal");
+const idVal = document.getElementById("idVal");
+const filterCount = document.getElementById("filterCount");
+const fontFilterInput = document.getElementById("fontFilter");
+const fontVal = document.getElementById("fontVal");
+fontFilterInput.addEventListener("input", () => {
+  labelFontPx = Number(fontFilterInput.value) || 10;
+  fontVal.textContent = labelFontPx + "px";
+  renderLabels(Number(lenFilterInput.value) || 0);
+});
+
+function applyFilters() {
+  const minLen = Math.max(0, Number(lenFilterInput.value) || 0);
+  const minId = Number(idFilterInput.value) || 0;
+  lenVal.textContent = minLen.toLocaleString() + " bp";
+  idVal.textContent = minId.toFixed(1) + "%";
+
+  let shown = 0;
+  for (const s of segEls) {
+    const visible = s.identity >= minId && s.lenA >= minLen && s.lenB >= minLen;
+    s.el.style.display = visible ? "" : "none";
+    s.hitEl.style.display = visible ? "" : "none";
+    if (visible) shown++;
+  }
+  for (const g of gridEls) {
+    g.el.style.display = g.length >= minLen ? "" : "none";
+  }
+  filterCount.textContent = shown.toLocaleString() + " / " + segEls.length.toLocaleString() +
+      " alignment blocks shown";
+  renderLabels(minLen);
+}
+lenFilterInput.addEventListener("input", applyFilters);
+idFilterInput.addEventListener("input", applyFilters);
+document.getElementById("filterReset").addEventListener("click", () => {
+  lenFilterInput.value = 0; idFilterInput.value = 0;
+  applyFilters();
+});
+
+// ── Dynamic layer: sequence-ID labels, redrawn on zoom/pan/filter since visibility/spacing change ──
+const labelLayer = document.createElementNS(NS, "g");
+svg.appendChild(labelLayer);
+
+function pxPerUnitX() { return container.clientWidth / vb.w; }
+function pxPerUnitY() { return container.clientHeight / vb.h; }
+
+let labelFontPx = 10;
+
+function renderLabels(minLen) {
+  minLen = minLen || 0;
+  labelLayer.innerHTML = "";
+  const fontPx = labelFontPx;
+  const fontUnitsX = fontPx / pxPerUnitX();
+  const fontUnitsY = fontPx / pxPerUnitY();
+  const minGapPx = fontPx * 4.2;
+
+  function place(seqs, axis) {
+    const visible = seqs.filter(s => s.length >= minLen && (axis === "x"
+      ? s.offset + s.length > vb.x && s.offset < vb.x + vb.w
+      : s.offset + s.length > vb.y && s.offset < vb.y + vb.h));
+    let lastPx = -Infinity;
+    for (const s of visible) {
+      const start = Math.max(s.offset, axis === "x" ? vb.x : vb.y);
+      const end = Math.min(s.offset + s.length, axis === "x" ? vb.x + vb.w : vb.y + vb.h);
+      const mid = (start + end) / 2;
+      const px = axis === "x" ? (mid - vb.x) * pxPerUnitX() : (mid - vb.y) * pxPerUnitY();
+      if (px - lastPx < minGapPx) continue;
+      lastPx = px;
+      const t = document.createElementNS(NS, "text");
+      t.textContent = s.name;
+      t.setAttribute("font-size", (axis === "x" ? fontUnitsX : fontUnitsY));
+      t.setAttribute("fill", "#666");
+      if (axis === "x") {
+        t.setAttribute("x", mid); t.setAttribute("y", vb.y + fontUnitsY * 1.3);
+        t.setAttribute("text-anchor", "middle");
+      } else {
+        t.setAttribute("x", vb.x + 4); t.setAttribute("y", mid);
+        t.setAttribute("dominant-baseline", "middle");
+      }
+      labelLayer.appendChild(t);
+    }
+  }
+  place(DATA.seqs_a, "x");
+  place(DATA.seqs_b, "y");
+}
+
+applyFilters();
+renderBasket();
+
+// ── Zoom (wheel) ──
+container.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  const rect = container.getBoundingClientRect();
+  const mx = vb.x + (e.clientX - rect.left) / pxPerUnitX();
+  const my = vb.y + (e.clientY - rect.top) / pxPerUnitY();
+  const factor = e.deltaY > 0 ? 1.15 : 1 / 1.15;
+  let newW = vb.w * factor, newH = vb.h * factor;
+  newW = Math.max(20, Math.min(FULL.w * 1.05, newW));
+  newH = Math.max(20, Math.min(FULL.h * 1.05, newH));
+  vb.x = mx - (mx - vb.x) * (newW / vb.w);
+  vb.y = my - (my - vb.y) * (newH / vb.h);
+  vb.w = newW; vb.h = newH;
+  setViewBox();
+  renderLabels(Number(lenFilterInput.value) || 0);
+}, { passive: false });
+
+// ── Pan (drag) ──
+let dragging = false, lastX = 0, lastY = 0;
+container.addEventListener("mousedown", (e) => {
+  dragging = true; lastX = e.clientX; lastY = e.clientY;
+  container.classList.add("dragging");
+});
+window.addEventListener("mousemove", (e) => {
+  if (!dragging) return;
+  const dx = (e.clientX - lastX) / pxPerUnitX();
+  const dy = (e.clientY - lastY) / pxPerUnitY();
+  vb.x -= dx; vb.y -= dy;
+  lastX = e.clientX; lastY = e.clientY;
+  setViewBox();
+  renderLabels(Number(lenFilterInput.value) || 0);
+});
+window.addEventListener("mouseup", () => {
+  dragging = false;
+  container.classList.remove("dragging");
+});
+
+// ── Reset / search ──
+document.getElementById("resetBtn").addEventListener("click", () => {
+  vb = { x: FULL.x, y: FULL.y, w: FULL.w, h: FULL.h };
+  setViewBox(); renderLabels(Number(lenFilterInput.value) || 0);
+});
+document.getElementById("search").addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  const q = e.target.value.trim();
+  if (!q) return;
+  const a = DATA.seqs_a.find(s => s.name === q);
+  const b = DATA.seqs_b.find(s => s.name === q);
+  if (a) {
+    vb = { x: Math.max(0, a.offset - a.length * 0.2), y: FULL.y,
+           w: a.length * 1.4, h: FULL.h };
+  } else if (b) {
+    vb = { x: FULL.x, y: Math.max(0, b.offset - b.length * 0.2),
+           w: FULL.w, h: b.length * 1.4 };
+  } else {
+    tooltip.innerHTML = "No sequence named '" + q + "' in A or B";
+    tooltip.style.display = "block";
+    tooltip.style.left = "50%"; tooltip.style.top = "60px";
+    setTimeout(hideTooltip, 2000);
+    return;
+  }
+  setViewBox(); renderLabels(Number(lenFilterInput.value) || 0);
+});
+</script>
+</body>
+</html>

@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v0.3.0-teal" alt="Version v0.3.0"/>
+  <img src="https://img.shields.io/badge/version-v0.4.0-teal" alt="Version v0.4.0"/>
   <img src="https://img.shields.io/badge/python-3.10%2B-blue" alt="Python 3.10+"/>
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS-lightgrey" alt="Platform"/>
 </p>
@@ -26,7 +26,7 @@ between two genomes.
 |---|---|---|
 | 1 | `mod01_metrics_comparison_*.tsv` | Side-by-side assembly metrics (N50, GC%, sequence counts...) with deltas |
 | 2 | `workdir/*.paf` | minimap2 whole-genome alignment (checkpointed) |
-| 3 | `mod03_dotplot_*.jpeg` | Whole-genome dot plot, alignment blocks colored by % identity |
+| 3 | `mod03_dotplot_*.jpeg`, `mod03_dotplot_*.html` | Whole-genome dot plot (static image + zoomable/interactive HTML), alignment blocks colored by % identity |
 | 4 | `mod04_alignment_summary_*.txt` | Coverage and identity statistics |
 | 5 | `mod05_correspondence_*.tsv` | Best-matching target sequence per query sequence |
 | 6 | `mod06_unaligned_{A,B}_*.tsv` | Regions with no alignment coverage (assembly-specific sequence) |
@@ -77,7 +77,8 @@ python3 scripts/YithCOMPASM.py compare_assemblies \
 | `--format` | No | Comma-separated dot plot formats: jpeg, png, pdf, svg (default: `jpeg`) |
 | `--min_rearrangement_len` | No | Minimum block length considered for Module 8 flagging (default: 1000) |
 | `--skip_metrics` | No | Skip Module 1 |
-| `--skip_dotplot` | No | Skip Module 3 |
+| `--skip_dotplot` | No | Skip Module 3 (both the static image and the interactive HTML) |
+| `--skip_dotplot_html` | No | Keep the static dot plot image but skip generating the interactive HTML version |
 | `--skip_correspondence` | No | Skip Module 5 |
 | `--skip_unaligned` | No | Skip Module 6 |
 | `--skip_redundancy` | No | Skip Module 7 |
@@ -94,6 +95,7 @@ python3 scripts/YithCOMPASM.py compare_assemblies \
 ├── results/
 │   ├── mod01_metrics_comparison_{prefix}.tsv
 │   ├── mod03_dotplot_{prefix}.jpeg
+│   ├── mod03_dotplot_{prefix}.html   (interactive: zoom/pan/hover/filter/basket)
 │   ├── mod04_alignment_summary_{prefix}.txt
 │   ├── mod05_correspondence_{prefix}.tsv
 │   ├── mod06_unaligned_A_{prefix}.tsv
@@ -117,6 +119,33 @@ base-level CIGAR generation — without it, minimap2's default PAF `nmatch`/
 alignment identity, and will visibly understate real similarity (verified
 during development: omitting `-c` on a 1.5%-divergence test pair reported
 ~55-78% identity instead of the correct ~98.4%).
+
+## Interactive dot plot
+
+`mod03_dotplot_{prefix}.html` is a self-contained interactive companion to
+the static image — vanilla JS + SVG, no CDN dependencies, opens directly in
+any browser, works fully offline. It exists because static dot plots can't
+label every sequence ID for fragmented assemblies (dozens to hundreds of
+contigs) without becoming unreadable. Features:
+
+- **Zoom / pan**: scroll to zoom, drag to pan.
+- **Hover** an alignment line for its exact query/target coordinates,
+  identity, and strand.
+- **Filter** by minimum sequence length and minimum % identity, and by an
+  adjustable SeqID label size (8-60px) so labels are legible at whatever
+  zoom level and screen you're using.
+- **Search** by sequence ID to jump straight to it.
+- **Basket**: click an alignment line to add both its query and target
+  sequence IDs to a basket shown in the side panel; each entry is
+  individually removable.
+- **Export**: download the basket as a plain ID list (`.txt`), or load the
+  original assembly FASTA files locally in the browser (nothing is
+  uploaded anywhere) and download just the basketed sequences as a ready-to-
+  use FASTA — e.g. for a follow-up BLAST of a region flagged as redundant or
+  rearranged.
+
+See the [UserCase01 interactive dot plot](examples/SPSC01_HiFiasm_vs_Flye/dotplot_interactive.html)
+for a real example (open it locally after cloning the repo).
 
 ## Coverage, redundancy, and collapsed haplotypes
 

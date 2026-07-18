@@ -31,7 +31,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-VERSION = "v0.3.0"
+VERSION = "v0.4.0"
 
 MAX_LABELED_SEQS = 30   # only the largest N sequences per axis get gridlines/labels
 
@@ -461,6 +461,570 @@ def build_dot_plot(records: list, lens_a: dict, lens_b: dict,
     plt.close(fig)
 
 
+_DOTPLOT_HTML_TEMPLATE = r"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>YithCOMPASM interactive dot plot</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+         margin: 0; background: #fafafa; color: #222; }
+  #toolbar { padding: 8px 14px; background: #fff; border-bottom: 1px solid #ddd;
+             display: flex; align-items: center; gap: 14px; font-size: 13px; flex-wrap: wrap; }
+  #toolbar button { padding: 4px 10px; cursor: pointer; border: 1px solid #bbb; border-radius: 4px;
+                     background: #f2f2f2; }
+  #toolbar button:hover { background: #e6e6e6; }
+  #main { display: flex; height: calc(100vh - 44px); }
+  #plot-container { position: relative; flex: 1 1 auto; overflow: hidden; cursor: grab; background: #fff; }
+  #plot-container.dragging { cursor: grabbing; }
+  svg { display: block; width: 100%; height: 100%; }
+  .seg { stroke-width: 1.6; vector-effect: non-scaling-stroke; pointer-events: none; }
+  .seg.hover { stroke-width: 3.5 !important; }
+  .seg-hit { stroke: transparent; fill: none; stroke-width: 10; vector-effect: non-scaling-stroke;
+             cursor: pointer; pointer-events: stroke; }
+  .gridline { stroke: #dcdcdc; stroke-width: 1; vector-effect: non-scaling-stroke; }
+  #tooltip { position: absolute; pointer-events: none; background: rgba(20,20,20,0.92); color: #fff;
+             padding: 6px 9px; border-radius: 4px; font-size: 12px; line-height: 1.5; display: none;
+             white-space: nowrap; z-index: 10; }
+  #legend { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+  #legend-bar { width: 120px; height: 12px;
+                background: linear-gradient(to right, #a50026, #d73027, #f46d43, #fdae61, #fee08b,
+                                             #ffffbf, #d9ef8b, #a6d96a, #66bd63, #1a9850, #006837);
+                border: 1px solid #999; }
+  #search { padding: 3px 6px; border: 1px solid #bbb; border-radius: 4px; width: 160px; }
+  #sidepanel { flex: 0 0 250px; border-left: 1px solid #ddd; background: #fff; padding: 16px;
+               overflow-y: auto; font-size: 13px; }
+  #sidepanel h4 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em;
+                  color: #666; }
+  .filter-row { margin-bottom: 18px; }
+  .filter-row label { display: block; margin-bottom: 6px; font-weight: 600; }
+  .filter-row .val { font-weight: 400; color: #555; }
+  .filter-row input[type=range] { width: 100%; }
+  .filter-row input[type=number] { width: 100%; padding: 4px 6px; border: 1px solid #bbb; border-radius: 4px; }
+  #filterCount { color: #888; font-size: 12px; margin-top: 4px; }
+  #filterReset { margin-top: 4px; font-size: 12px; padding: 3px 8px; border: 1px solid #bbb;
+                 border-radius: 4px; background: #f2f2f2; cursor: pointer; }
+  .gridline.basketed { stroke: #F5A623; stroke-width: 2.4; }
+  .seg.basketed { stroke-width: 3.2 !important; }
+  #basketList { list-style: none; margin: 0 0 8px; padding: 0; max-height: 160px; overflow-y: auto; }
+  #basketList li { display: flex; align-items: center; justify-content: space-between; gap: 6px;
+                    padding: 3px 0; border-bottom: 1px solid #eee; }
+  #basketList .tag { display: inline-block; font-size: 10px; font-weight: 700; color: #fff;
+                      background: #888; border-radius: 3px; padding: 0 4px; margin-right: 5px; }
+  #basketList .tag.a { background: #4C9BE8; }
+  #basketList .tag.b { background: #F5A623; }
+  #basketList .rm { cursor: pointer; color: #E8604C; font-weight: 700; border: none; background: none;
+                     font-size: 14px; line-height: 1; padding: 0 3px; }
+  #basketEmpty { color: #888; font-size: 12px; margin-bottom: 8px; }
+  .panel-btn { display: block; width: 100%; margin-top: 6px; font-size: 12px; padding: 5px 8px;
+               border: 1px solid #bbb; border-radius: 4px; background: #f2f2f2; cursor: pointer; }
+  .panel-btn:hover { background: #e6e6e6; }
+  .panel-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .file-row { margin-top: 10px; font-size: 12px; }
+  .file-row label { display: block; font-weight: 600; margin-bottom: 3px; }
+  .file-row input[type=file] { width: 100%; font-size: 11px; }
+  .file-status { color: #4C9BE8; font-size: 11px; margin-top: 2px; }
+</style>
+</head>
+<body>
+  <div id="toolbar">
+    <strong>YithCOMPASM</strong>
+    <span id="counts"></span>
+    <button id="resetBtn">Reset zoom</button>
+    <span>Scroll to zoom &middot; drag to pan &middot; hover a line for details &middot; click a line to add it to the basket</span>
+    <input id="search" type="text" placeholder="Find sequence ID (A or B)&hellip;"/>
+    <div id="legend"><span>low %ID</span><div id="legend-bar"></div><span>high %ID</span></div>
+  </div>
+  <div id="main">
+    <div id="plot-container">
+      <svg id="plot" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none"></svg>
+    </div>
+    <div id="sidepanel">
+      <h4>Filters</h4>
+      <div class="filter-row">
+        <label>Min sequence length (bp) <span class="val" id="lenVal">0</span></label>
+        <input type="number" id="lenFilter" min="0" step="1000" value="0"/>
+      </div>
+      <div class="filter-row">
+        <label>Min % identity <span class="val" id="idVal">0</span></label>
+        <input type="range" id="idFilter" min="0" max="100" step="0.5" value="0"/>
+      </div>
+      <button id="filterReset">Reset filters</button>
+      <div id="filterCount"></div>
+
+      <div class="filter-row" style="margin-top:18px;">
+        <label>SeqID label size <span class="val" id="fontVal">10px</span></label>
+        <input type="range" id="fontFilter" min="8" max="60" step="1" value="10"/>
+      </div>
+
+      <h4 style="margin-top:22px;">Basket</h4>
+      <div id="basketEmpty">No sequences selected yet — click an alignment line to add its A and B sequences.</div>
+      <ul id="basketList"></ul>
+      <button class="panel-btn" id="basketClear">Clear basket</button>
+      <button class="panel-btn" id="basketDownloadIds">Download ID list (.txt)</button>
+
+      <div class="file-row">
+        <label>Assembly A FASTA (optional, for export)</label>
+        <input type="file" id="fastaAInput" accept=".fa,.fasta,.fna,.fas,.txt"/>
+        <div class="file-status" id="fastaAStatus"></div>
+      </div>
+      <div class="file-row">
+        <label>Assembly B FASTA (optional, for export)</label>
+        <input type="file" id="fastaBInput" accept=".fa,.fasta,.fna,.fas,.txt"/>
+        <div class="file-status" id="fastaBStatus"></div>
+      </div>
+      <button class="panel-btn" id="basketDownloadFasta">Download basket as FASTA</button>
+    </div>
+  </div>
+  <div id="tooltip"></div>
+
+<script>
+const DATA = __DATA_JSON__;
+
+const svg = document.getElementById("plot");
+const container = document.getElementById("plot-container");
+const tooltip = document.getElementById("tooltip");
+const NS = "http://www.w3.org/2000/svg";
+
+document.getElementById("counts").textContent =
+    DATA.segments.length.toLocaleString() + " alignment blocks  ·  " +
+    DATA.seqs_a.length.toLocaleString() + " seqs in A  ·  " +
+    DATA.seqs_b.length.toLocaleString() + " seqs in B";
+
+let vb = { x: 0, y: 0, w: DATA.total_a, h: DATA.total_b };
+const FULL = { x: 0, y: 0, w: DATA.total_a, h: DATA.total_b };
+
+function setViewBox() {
+  svg.setAttribute("viewBox", vb.x + " " + vb.y + " " + vb.w + " " + vb.h);
+}
+setViewBox();
+
+// RdYlGn-ish 11-stop interpolation (ColorBrewer RdYlGn), input 0-100
+const STOPS = [
+  [165,0,38],[215,48,39],[244,109,67],[253,174,97],[254,224,139],[255,255,191],
+  [217,239,139],[166,217,106],[102,189,99],[26,152,80],[0,104,55]
+];
+function identityColor(pct, minPct) {
+  let t = (pct - minPct) / (100 - minPct || 1);
+  t = Math.max(0, Math.min(1, t));
+  const scaled = t * (STOPS.length - 1);
+  const i = Math.min(STOPS.length - 2, Math.floor(scaled));
+  const f = scaled - i;
+  const c0 = STOPS[i], c1 = STOPS[i + 1];
+  const r = Math.round(c0[0] + (c1[0] - c0[0]) * f);
+  const g = Math.round(c0[1] + (c1[1] - c0[1]) * f);
+  const b = Math.round(c0[2] + (c1[2] - c0[2]) * f);
+  return "rgb(" + r + "," + g + "," + b + ")";
+}
+
+const minIdentitySeen = DATA.segments.length
+    ? Math.min.apply(null, DATA.segments.map(s => s.identity)) : 0;
+
+const lenByNameA = {}; for (const s of DATA.seqs_a) lenByNameA[s.name] = s.length;
+const lenByNameB = {}; for (const s of DATA.seqs_b) lenByNameB[s.name] = s.length;
+const maxSeqLen = Math.max(
+  DATA.seqs_a.length ? Math.max.apply(null, DATA.seqs_a.map(s => s.length)) : 0,
+  DATA.seqs_b.length ? Math.max.apply(null, DATA.seqs_b.map(s => s.length)) : 0
+);
+
+// ── Static layer: gridlines + segments (drawn once; zoom/pan is just a viewBox change) ──
+const staticLayer = document.createElementNS(NS, "g");
+svg.appendChild(staticLayer);
+
+function addLine(x1, y1, x2, y2, cls, extra) {
+  const el = document.createElementNS(NS, "line");
+  el.setAttribute("x1", x1); el.setAttribute("y1", y1);
+  el.setAttribute("x2", x2); el.setAttribute("y2", y2);
+  el.setAttribute("class", cls);
+  if (extra) for (const k in extra) el.setAttribute(k, extra[k]);
+  staticLayer.appendChild(el);
+  return el;
+}
+
+const gridEls = [];
+for (const s of DATA.seqs_a) {
+  const el = addLine(s.offset, 0, s.offset, DATA.total_b, "gridline");
+  gridEls.push({ el: el, axis: "a", name: s.name, length: s.length });
+}
+for (const s of DATA.seqs_b) {
+  const el = addLine(0, s.offset, DATA.total_a, s.offset, "gridline");
+  gridEls.push({ el: el, axis: "b", name: s.name, length: s.length });
+}
+
+const segEls = [];
+for (const seg of DATA.segments) {
+  const el = addLine(seg.x0, seg.y0, seg.x1, seg.y1, "seg", {
+    stroke: identityColor(seg.identity, minIdentitySeen),
+  });
+  el.dataset.qname = seg.qname; el.dataset.tname = seg.tname;
+  el.dataset.qstart = seg.qstart; el.dataset.qend = seg.qend;
+  el.dataset.tstart = seg.tstart; el.dataset.tend = seg.tend;
+  el.dataset.identity = seg.identity.toFixed(2);
+  el.dataset.strand = seg.strand;
+  // Real alignment blocks are often only 1-2 screen px wide/tall at typical zoom
+  // levels, especially zoomed out over a whole genome — a plain 1.6px stroke is too
+  // thin a target to reliably hover/click. Layer an invisible, much wider "hit line"
+  // on top that drives hover + click, while the thin visible line stays untouched.
+  const hitEl = addLine(seg.x0, seg.y0, seg.x1, seg.y1, "seg-hit");
+  hitEl.addEventListener("mouseenter", (e) => { el.classList.add("hover"); showTooltip(el, e); });
+  hitEl.addEventListener("mousemove", moveTooltip);
+  hitEl.addEventListener("mouseleave", () => { el.classList.remove("hover"); hideTooltip(); });
+  hitEl.addEventListener("click", () => {
+    addToBasket("a", seg.qname, lenByNameA[seg.qname] || 0);
+    addToBasket("b", seg.tname, lenByNameB[seg.tname] || 0);
+    renderBasket();
+  });
+  segEls.push({
+    el: el, hitEl: hitEl, identity: seg.identity,
+    lenA: lenByNameA[seg.qname] || 0, lenB: lenByNameB[seg.tname] || 0,
+  });
+}
+
+function showTooltip(el, e) {
+  const d = el.dataset;
+  tooltip.innerHTML =
+      "<b>A:</b> " + d.qname + ":" + Number(d.qstart).toLocaleString() + "-" + Number(d.qend).toLocaleString() + "<br>" +
+      "<b>B:</b> " + d.tname + ":" + Number(d.tstart).toLocaleString() + "-" + Number(d.tend).toLocaleString() + "<br>" +
+      "<b>identity:</b> " + d.identity + "%  &middot;  <b>strand:</b> " + d.strand;
+  tooltip.style.display = "block";
+  moveTooltip(e);
+}
+function moveTooltip(e) {
+  tooltip.style.left = (e.clientX + 14) + "px";
+  tooltip.style.top = (e.clientY + 14) + "px";
+}
+function hideTooltip() { tooltip.style.display = "none"; }
+
+// ── Basket: collect sequence IDs of interest, export as ID list or FASTA ──
+const basket = new Map(); // key "a|name" or "b|name" -> {axis, name, length}
+const basketList = document.getElementById("basketList");
+const basketEmpty = document.getElementById("basketEmpty");
+let fastaMapA = null, fastaMapB = null;
+
+function addToBasket(axis, name, length) {
+  basket.set(axis + "|" + name, { axis: axis, name: name, length: length });
+}
+function removeFromBasket(key) {
+  basket.delete(key);
+  renderBasket();
+}
+function renderBasket() {
+  basketList.innerHTML = "";
+  basketEmpty.style.display = basket.size ? "none" : "block";
+  const sorted = Array.from(basket.entries()).sort((x, y) =>
+      x[1].axis === y[1].axis ? x[1].name.localeCompare(y[1].name) : x[1].axis.localeCompare(y[1].axis));
+  for (const [key, item] of sorted) {
+    const li = document.createElement("li");
+    const tag = document.createElement("span");
+    tag.className = "tag " + item.axis;
+    tag.textContent = item.axis.toUpperCase();
+    const label = document.createElement("span");
+    label.style.flex = "1 1 auto"; label.style.overflow = "hidden";
+    label.style.textOverflow = "ellipsis"; label.style.whiteSpace = "nowrap";
+    label.title = item.name + " (" + item.length.toLocaleString() + " bp)";
+    label.textContent = item.name;
+    const left = document.createElement("span");
+    left.style.display = "flex"; left.style.alignItems = "center"; left.style.overflow = "hidden";
+    left.appendChild(tag); left.appendChild(label);
+    const rm = document.createElement("button");
+    rm.className = "rm"; rm.textContent = "×"; rm.title = "Remove";
+    rm.addEventListener("click", () => removeFromBasket(key));
+    li.appendChild(left); li.appendChild(rm);
+    basketList.appendChild(li);
+  }
+  // highlight basketed gridlines/segments
+  for (const g of gridEls) {
+    g.el.classList.toggle("basketed", basket.has(g.axis + "|" + g.name));
+  }
+  for (const s of segEls) {
+    const d = s.el.dataset;
+    const on = basket.has("a|" + d.qname) && basket.has("b|" + d.tname);
+    s.el.classList.toggle("basketed", on);
+  }
+}
+document.getElementById("basketClear").addEventListener("click", () => {
+  basket.clear();
+  renderBasket();
+});
+document.getElementById("basketDownloadIds").addEventListener("click", () => {
+  if (!basket.size) return;
+  const lines = ["# axis\tseqID\tlength_bp"];
+  const sorted = Array.from(basket.values()).sort((x, y) =>
+      x.axis === y.axis ? x.name.localeCompare(y.name) : x.axis.localeCompare(y.axis));
+  for (const item of sorted) lines.push(item.axis.toUpperCase() + "\t" + item.name + "\t" + item.length);
+  triggerDownload(lines.join("\n") + "\n", "YithCOMPASM_basket_ids.txt", "text/plain");
+});
+
+function parseFasta(text) {
+  const map = new Map();
+  let name = null, chunks = [];
+  const lines = text.split(/\r?\n/);
+  for (const line of lines) {
+    if (line.startsWith(">")) {
+      if (name !== null) map.set(name, chunks.join(""));
+      name = line.slice(1).trim().split(/\s+/)[0];
+      chunks = [];
+    } else if (name !== null) {
+      chunks.push(line.trim());
+    }
+  }
+  if (name !== null) map.set(name, chunks.join(""));
+  return map;
+}
+function wrapSeq(seq, width) {
+  width = width || 60;
+  const out = [];
+  for (let i = 0; i < seq.length; i += width) out.push(seq.slice(i, i + width));
+  return out.join("\n");
+}
+function triggerDownload(content, filename, mime) {
+  const blob = new Blob([content], { type: mime || "text/plain" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function wireFastaInput(inputEl, statusEl, setMap) {
+  inputEl.addEventListener("change", () => {
+    const file = inputEl.files[0];
+    if (!file) return;
+    statusEl.textContent = "Loading " + file.name + "…";
+    const reader = new FileReader();
+    reader.onload = () => {
+      const map = parseFasta(reader.result);
+      setMap(map);
+      statusEl.textContent = "Loaded " + file.name + " (" + map.size.toLocaleString() + " sequences)";
+    };
+    reader.onerror = () => { statusEl.textContent = "Failed to read " + file.name; };
+    reader.readAsText(file);
+  });
+}
+wireFastaInput(document.getElementById("fastaAInput"), document.getElementById("fastaAStatus"),
+    (m) => { fastaMapA = m; });
+wireFastaInput(document.getElementById("fastaBInput"), document.getElementById("fastaBStatus"),
+    (m) => { fastaMapB = m; });
+
+document.getElementById("basketDownloadFasta").addEventListener("click", () => {
+  if (!basket.size) { alert("Basket is empty — click alignment lines to add sequences first."); return; }
+  const sorted = Array.from(basket.values()).sort((x, y) =>
+      x.axis === y.axis ? x.name.localeCompare(y.name) : x.axis.localeCompare(y.axis));
+  const parts = [];
+  const missing = [];
+  for (const item of sorted) {
+    const map = item.axis === "a" ? fastaMapA : fastaMapB;
+    if (!map) { missing.push(item.name + " (assembly " + item.axis.toUpperCase() + " FASTA not loaded)"); continue; }
+    const seq = map.get(item.name);
+    if (seq === undefined) { missing.push(item.name + " (not found in loaded FASTA)"); continue; }
+    parts.push(">" + item.name + "\n" + wrapSeq(seq) + "\n");
+  }
+  if (missing.length) alert("Skipped " + missing.length + " sequence(s):\n" + missing.join("\n"));
+  if (!parts.length) return;
+  triggerDownload(parts.join(""), "YithCOMPASM_basket_sequences.fasta", "text/plain");
+});
+
+// ── Filters: min sequence length + min %identity ──
+const lenFilterInput = document.getElementById("lenFilter");
+const idFilterInput = document.getElementById("idFilter");
+const lenVal = document.getElementById("lenVal");
+const idVal = document.getElementById("idVal");
+const filterCount = document.getElementById("filterCount");
+const fontFilterInput = document.getElementById("fontFilter");
+const fontVal = document.getElementById("fontVal");
+fontFilterInput.addEventListener("input", () => {
+  labelFontPx = Number(fontFilterInput.value) || 10;
+  fontVal.textContent = labelFontPx + "px";
+  renderLabels(Number(lenFilterInput.value) || 0);
+});
+
+function applyFilters() {
+  const minLen = Math.max(0, Number(lenFilterInput.value) || 0);
+  const minId = Number(idFilterInput.value) || 0;
+  lenVal.textContent = minLen.toLocaleString() + " bp";
+  idVal.textContent = minId.toFixed(1) + "%";
+
+  let shown = 0;
+  for (const s of segEls) {
+    const visible = s.identity >= minId && s.lenA >= minLen && s.lenB >= minLen;
+    s.el.style.display = visible ? "" : "none";
+    s.hitEl.style.display = visible ? "" : "none";
+    if (visible) shown++;
+  }
+  for (const g of gridEls) {
+    g.el.style.display = g.length >= minLen ? "" : "none";
+  }
+  filterCount.textContent = shown.toLocaleString() + " / " + segEls.length.toLocaleString() +
+      " alignment blocks shown";
+  renderLabels(minLen);
+}
+lenFilterInput.addEventListener("input", applyFilters);
+idFilterInput.addEventListener("input", applyFilters);
+document.getElementById("filterReset").addEventListener("click", () => {
+  lenFilterInput.value = 0; idFilterInput.value = 0;
+  applyFilters();
+});
+
+// ── Dynamic layer: sequence-ID labels, redrawn on zoom/pan/filter since visibility/spacing change ──
+const labelLayer = document.createElementNS(NS, "g");
+svg.appendChild(labelLayer);
+
+function pxPerUnitX() { return container.clientWidth / vb.w; }
+function pxPerUnitY() { return container.clientHeight / vb.h; }
+
+let labelFontPx = 10;
+
+function renderLabels(minLen) {
+  minLen = minLen || 0;
+  labelLayer.innerHTML = "";
+  const fontPx = labelFontPx;
+  const fontUnitsX = fontPx / pxPerUnitX();
+  const fontUnitsY = fontPx / pxPerUnitY();
+  const minGapPx = fontPx * 4.2;
+
+  function place(seqs, axis) {
+    const visible = seqs.filter(s => s.length >= minLen && (axis === "x"
+      ? s.offset + s.length > vb.x && s.offset < vb.x + vb.w
+      : s.offset + s.length > vb.y && s.offset < vb.y + vb.h));
+    let lastPx = -Infinity;
+    for (const s of visible) {
+      const start = Math.max(s.offset, axis === "x" ? vb.x : vb.y);
+      const end = Math.min(s.offset + s.length, axis === "x" ? vb.x + vb.w : vb.y + vb.h);
+      const mid = (start + end) / 2;
+      const px = axis === "x" ? (mid - vb.x) * pxPerUnitX() : (mid - vb.y) * pxPerUnitY();
+      if (px - lastPx < minGapPx) continue;
+      lastPx = px;
+      const t = document.createElementNS(NS, "text");
+      t.textContent = s.name;
+      t.setAttribute("font-size", (axis === "x" ? fontUnitsX : fontUnitsY));
+      t.setAttribute("fill", "#666");
+      if (axis === "x") {
+        t.setAttribute("x", mid); t.setAttribute("y", vb.y + fontUnitsY * 1.3);
+        t.setAttribute("text-anchor", "middle");
+      } else {
+        t.setAttribute("x", vb.x + 4); t.setAttribute("y", mid);
+        t.setAttribute("dominant-baseline", "middle");
+      }
+      labelLayer.appendChild(t);
+    }
+  }
+  place(DATA.seqs_a, "x");
+  place(DATA.seqs_b, "y");
+}
+
+applyFilters();
+renderBasket();
+
+// ── Zoom (wheel) ──
+container.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  const rect = container.getBoundingClientRect();
+  const mx = vb.x + (e.clientX - rect.left) / pxPerUnitX();
+  const my = vb.y + (e.clientY - rect.top) / pxPerUnitY();
+  const factor = e.deltaY > 0 ? 1.15 : 1 / 1.15;
+  let newW = vb.w * factor, newH = vb.h * factor;
+  newW = Math.max(20, Math.min(FULL.w * 1.05, newW));
+  newH = Math.max(20, Math.min(FULL.h * 1.05, newH));
+  vb.x = mx - (mx - vb.x) * (newW / vb.w);
+  vb.y = my - (my - vb.y) * (newH / vb.h);
+  vb.w = newW; vb.h = newH;
+  setViewBox();
+  renderLabels(Number(lenFilterInput.value) || 0);
+}, { passive: false });
+
+// ── Pan (drag) ──
+let dragging = false, lastX = 0, lastY = 0;
+container.addEventListener("mousedown", (e) => {
+  dragging = true; lastX = e.clientX; lastY = e.clientY;
+  container.classList.add("dragging");
+});
+window.addEventListener("mousemove", (e) => {
+  if (!dragging) return;
+  const dx = (e.clientX - lastX) / pxPerUnitX();
+  const dy = (e.clientY - lastY) / pxPerUnitY();
+  vb.x -= dx; vb.y -= dy;
+  lastX = e.clientX; lastY = e.clientY;
+  setViewBox();
+  renderLabels(Number(lenFilterInput.value) || 0);
+});
+window.addEventListener("mouseup", () => {
+  dragging = false;
+  container.classList.remove("dragging");
+});
+
+// ── Reset / search ──
+document.getElementById("resetBtn").addEventListener("click", () => {
+  vb = { x: FULL.x, y: FULL.y, w: FULL.w, h: FULL.h };
+  setViewBox(); renderLabels(Number(lenFilterInput.value) || 0);
+});
+document.getElementById("search").addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  const q = e.target.value.trim();
+  if (!q) return;
+  const a = DATA.seqs_a.find(s => s.name === q);
+  const b = DATA.seqs_b.find(s => s.name === q);
+  if (a) {
+    vb = { x: Math.max(0, a.offset - a.length * 0.2), y: FULL.y,
+           w: a.length * 1.4, h: FULL.h };
+  } else if (b) {
+    vb = { x: FULL.x, y: Math.max(0, b.offset - b.length * 0.2),
+           w: FULL.w, h: b.length * 1.4 };
+  } else {
+    tooltip.innerHTML = "No sequence named '" + q + "' in A or B";
+    tooltip.style.display = "block";
+    tooltip.style.left = "50%"; tooltip.style.top = "60px";
+    setTimeout(hideTooltip, 2000);
+    return;
+  }
+  setViewBox(); renderLabels(Number(lenFilterInput.value) || 0);
+});
+</script>
+</body>
+</html>
+"""
+
+
+def build_dot_plot_html(records: list, lens_a: dict, lens_b: dict, out_path: Path) -> None:
+    """Self-contained interactive HTML dot plot (vanilla JS + SVG, no CDN
+    dependencies): zoom/pan, hover tooltips, and sequence-ID labels that
+    only render when there is room at the current zoom level."""
+    offsets_a, ordered_a = _ordered_offsets(lens_a)
+    offsets_b, ordered_b = _ordered_offsets(lens_b)
+    total_a = sum(lens_a.values()) or 1
+    total_b = sum(lens_b.values()) or 1
+
+    segments = []
+    for r in records:
+        x0 = offsets_a[r["qname"]] + r["qstart"]
+        x1 = offsets_a[r["qname"]] + r["qend"]
+        if r["strand"] == "+":
+            y0_bio = offsets_b[r["tname"]] + r["tstart"]
+            y1_bio = offsets_b[r["tname"]] + r["tend"]
+        else:
+            y0_bio = offsets_b[r["tname"]] + r["tend"]
+            y1_bio = offsets_b[r["tname"]] + r["tstart"]
+        # flip Y so increasing biological coordinate renders upward, matching the static plot
+        segments.append({
+            "x0": x0, "y0": total_b - y0_bio, "x1": x1, "y1": total_b - y1_bio,
+            "identity": round(r["identity"], 4), "strand": r["strand"],
+            "qname": r["qname"], "tname": r["tname"],
+            "qstart": r["qstart"], "qend": r["qend"],
+            "tstart": r["tstart"], "tend": r["tend"],
+        })
+
+    data = {
+        "total_a": total_a, "total_b": total_b,
+        "seqs_a": [{"name": n, "offset": offsets_a[n], "length": l} for n, l in ordered_a],
+        "seqs_b": [{"name": n, "offset": total_b - offsets_b[n] - l, "length": l}
+                  for n, l in ordered_b],
+        "segments": segments,
+    }
+    html = _DOTPLOT_HTML_TEMPLATE.replace("__DATA_JSON__", json.dumps(data))
+    with open(out_path, "w") as fh:
+        fh.write(html)
+
+
 # ── Module 5: sequence correspondence table ───────────────────────────────────
 
 def build_correspondence_table(records: list, lens_a: dict, out_path: Path) -> None:
@@ -760,6 +1324,10 @@ def run_compare_assemblies(args) -> None:
         _banner("Module 3 — Dot plot")
         dotplot_path = results / f"mod03_dotplot_{prefix}"
         build_dot_plot(records, lens_a, lens_b, dotplot_path, args.color_map, plot_formats)
+        if not args.skip_dotplot_html:
+            html_path = results / f"mod03_dotplot_{prefix}.html"
+            build_dot_plot_html(records, lens_a, lens_b, html_path)
+            _log(f"  Written: {html_path.name}")
 
     _banner("Module 4 — Alignment summary")
     alignment_stats = compute_alignment_summary(records, lens_a, lens_b)
@@ -861,6 +1429,9 @@ def main(argv=None):
                         help="Comma-separated dot plot formats: jpeg, png, pdf, svg (default: jpeg)")
     cmp_ap.add_argument("--skip_metrics", action="store_true", help="Skip Module 1 — assembly metrics comparison")
     cmp_ap.add_argument("--skip_dotplot", action="store_true", help="Skip Module 3 — dot plot")
+    cmp_ap.add_argument("--skip_dotplot_html", action="store_true",
+                        help="Skip the interactive HTML dot plot (zoom/pan/hover/search) "
+                             "generated alongside the static image in Module 3")
     cmp_ap.add_argument("--skip_correspondence", action="store_true", help="Skip Module 5 — sequence correspondence table")
     cmp_ap.add_argument("--skip_unaligned", action="store_true", help="Skip Module 6 — unaligned region report")
     cmp_ap.add_argument("--skip_redundancy", action="store_true", help="Skip Module 7 — redundancy / coverage depth report")

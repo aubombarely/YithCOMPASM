@@ -1,5 +1,36 @@
 # Changelog
 
+## [v0.4.0] — 2026-07-19
+
+### Added
+- Interactive HTML dot plot (`mod03_dotplot_{prefix}.html`), generated
+  alongside the static image by default: self-contained vanilla JS + SVG,
+  no CDN dependencies, works offline. Zoom/pan, hover tooltips, search by
+  sequence ID, and filters for minimum sequence length / % identity /
+  SeqID label size (8-60px) — needed because static images can't legibly
+  label dozens-to-hundreds of contigs in a fragmented assembly.
+- Basket workflow in the interactive dot plot: click an alignment line to
+  add its query and target sequence IDs to a basket, then export either a
+  plain ID list or (after loading the original assembly FASTA files
+  locally in the browser, via the File API — nothing is uploaded) a FASTA
+  of just the basketed sequences, for follow-up analysis such as BLAST.
+- `--skip_dotplot_html` flag.
+
+### Fixed
+- The interactive dot plot's `<script>` block was silently corrupted at
+  generation time: the Python template string wasn't raw, so `\n`/`\t`/
+  regex escapes inside the embedded JavaScript (e.g. `lines.join("\n")`,
+  `split(/\r?\n/)`) were consumed as Python string escapes before ever
+  reaching the HTML file, producing invalid JavaScript that failed to
+  render anything. Fixed by declaring `_DOTPLOT_HTML_TEMPLATE` as a raw
+  string; verified with `node --check` on the extracted script.
+- Alignment-line click/hover targets were a bare 1.6px-wide SVG stroke —
+  often only 1-2 screen pixels for real alignment blocks at typical
+  zoom levels, making individual lines hard to hit precisely (especially
+  to add a *different* line to the basket after already selecting one
+  nearby). Fixed by layering an invisible 10px-wide hit-target line over
+  each visible segment.
+
 ## [v0.3.0] — 2026-07-18
 
 ### Added

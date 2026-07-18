@@ -190,6 +190,17 @@ by percent identity. The repeated near-parallel diagonal bands — multiple
 Flye contigs tracking the same y-range on a single HiFiasm contig — are the
 visual signature of the redundancy quantified above.
 
+An [interactive version of this plot](examples/SPSC01_HiFiasm_vs_Flye/dotplot_interactive.html)
+is also generated alongside the static image (`mod03_dotplot_*.html`, open it
+directly in any browser — no server needed). It's the more useful view for
+this dataset specifically because Flye's 99 contigs are far too many to
+label on a static image: zoom in to read individual sequence IDs, filter by
+minimum sequence length or %identity to declutter the fragmented tail of
+Flye's assembly, click an alignment line to add both its Flye and HiFiasm
+sequence to a "basket", and export the basketed sequences straight to FASTA
+(loading the two assembly files locally in the browser) for follow-up, e.g.
+a targeted BLAST of one of the redundant regions.
+
 ---
 
 ## Step 6 — Resolving the origin of the redundancy: comparison against both parental references
