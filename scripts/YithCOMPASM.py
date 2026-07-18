@@ -31,7 +31,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-VERSION = "v0.4.2"
+VERSION = "v0.4.3"
 
 MAX_LABELED_SEQS = 30   # only the largest N sequences per axis get gridlines/labels
 
@@ -943,9 +943,14 @@ function renderLabels(minLen) {
       t.setAttribute("font-size", fontPx);
       t.setAttribute("fill", "#666");
       if (axis === "x") {
-        t.setAttribute("transform", "translate(" + mid + " " + (vb.y) + ") scale(" + invX + " " + invY + ")");
-        t.setAttribute("x", 0); t.setAttribute("y", fontPx * 1.3);
-        t.setAttribute("text-anchor", "middle");
+        // Rotated 90deg (reads top-to-bottom) so labels take up only ~one
+        // glyph's width each instead of their full name length, which is what
+        // actually causes neighboring X-axis labels to overlap when many
+        // contigs are packed into the same screen width.
+        t.setAttribute("transform", "translate(" + mid + " " + (vb.y) +
+            ") scale(" + invX + " " + invY + ") rotate(90)");
+        t.setAttribute("x", 4); t.setAttribute("y", 0);
+        t.setAttribute("text-anchor", "start");
       } else {
         t.setAttribute("transform", "translate(" + (vb.x) + " " + mid + ") scale(" + invX + " " + invY + ")");
         t.setAttribute("x", 4); t.setAttribute("y", 0);

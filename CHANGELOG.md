@@ -1,5 +1,15 @@
 # Changelog
 
+## [v0.4.3] — 2026-07-19
+
+### Changed
+- Interactive dot plot: X-axis (assembly A) SeqID labels are now rotated
+  90 degrees, reading top-to-bottom instead of left-to-right. Horizontal
+  labels take up their full name length in screen width, which is what
+  actually caused neighboring labels to collide when many contigs are
+  packed into the available width (e.g. UserCase01's 99 Flye contigs);
+  rotated, each label only needs about one glyph's width.
+
 ## [v0.4.2] — 2026-07-19
 
 ### Fixed
