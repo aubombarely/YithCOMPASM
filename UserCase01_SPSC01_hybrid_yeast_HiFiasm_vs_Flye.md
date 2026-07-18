@@ -24,7 +24,8 @@ than gene-sampling metrics alone.
 | SRA run | SRR27947616 (PacBio HiFi) |
 | Read filtering | Chopper, Q20, minimum length 30 kb |
 | Assemblers compared | HiFiasm (primary contigs) vs. Flye |
-| Reference assembly | GCA_047651925.1 (17 chromosomes) |
+| SPSC01 published assembly | GCA_047651925.1 (17 chromosomes) |
+| Parental references used (Step 6) | *S. cerevisiae* S288C (GCF_000146045.2), *S. pombe* 972h⁻ (GCF_000002945.2) |
 
 ---
 
@@ -191,6 +192,62 @@ visual signature of the redundancy quantified above.
 
 ---
 
+## Step 6 — Resolving the origin of the redundancy: comparison against both parental references
+
+The comparison above establishes *that* HiFiasm's assembly is redundant
+relative to Flye's, but not *which* parental subgenome (*S. cerevisiae* or
+*S. pombe*) the retained sequence belongs to, or whether the "hybrid"
+nature of SPSC01 is actually reflected in the sequenced genome content.
+Both assemblies were compared against both parental reference genomes:
+
+```bash
+# S. cerevisiae reference: GCF_000146045.2 (S288C)
+# S. pombe reference:      GCF_000002945.2 (972h-)
+
+python3 scripts/YithCOMPASM.py compare_assemblies \
+    --assembly_a Sacer_HIFI_FLYE.fasta \
+    --assembly_b GCF_000146045.2_R64_genomic.fna \
+    --output results/flye_vs_scer --preset asm20 --threads 4
+
+python3 scripts/YithCOMPASM.py compare_assemblies \
+    --assembly_a Sacer_HIFI_FLYE.fasta \
+    --assembly_b GCF_000002945.2_ASM294v3_genomic.fna \
+    --output results/flye_vs_spombe --preset asm20 --threads 4
+
+python3 scripts/YithCOMPASM.py compare_assemblies \
+    --assembly_a Sacer_HIFI_HIFIASM.fasta \
+    --assembly_b GCF_000146045.2_R64_genomic.fna \
+    --output results/hifiasm_vs_scer --preset asm20 --threads 4
+
+python3 scripts/YithCOMPASM.py compare_assemblies \
+    --assembly_a Sacer_HIFI_HIFIASM.fasta \
+    --assembly_b GCF_000002945.2_ASM294v3_genomic.fna \
+    --output results/hifiasm_vs_spombe --preset asm20 --threads 4
+```
+
+### Results
+
+| Comparison | Coverage of assembly | Coverage of reference | Multiplicity |
+|---|---|---|---|
+| Flye vs. *S. cerevisiae* (S288C) | **98.38%** | 97.98% | **1.79x** |
+| Flye vs. *S. pombe* (972h⁻) | 0.18% | 0.10% | — |
+| HiFiasm vs. *S. cerevisiae* (S288C) | **96.23%** | 96.73% | **1.04x** |
+| HiFiasm vs. *S. pombe* (972h⁻) | 1.45% | 0.08% | — |
+
+This is decisive. Essentially the entire Flye assembly (98%) and HiFiasm
+assembly (96%) is *S. cerevisiae* sequence; almost nothing aligns to
+*S. pombe* (the handful of hits are a few kb at most, most plausibly
+conserved rRNA/tRNA loci rather than real synteny). The internal
+consistency check confirms it numerically, not just qualitatively: the
+*S. cerevisiae* reference is 12.16 Mb; 12.16 × 1.79 ≈ 21.77 Mb (Flye's real
+total is 21.49 Mb), and 12.16 × 1.04 ≈ 12.65 Mb (HiFiasm's real total is
+12.62 Mb) — both match almost exactly.
+
+![Flye vs S. cerevisiae reference dot plot](examples/SPSC01_HiFiasm_vs_Flye/dotplot_flye_vs_Scerevisiae_ref.png)
+![HiFiasm vs S. cerevisiae reference dot plot](examples/SPSC01_HiFiasm_vs_Flye/dotplot_hifiasm_vs_Scerevisiae_ref.png)
+
+---
+
 ## Discussion — answering the class's Question 3
 
 **"Is the HIFIASM really duplicated? Is a technical problem or do it have a
@@ -222,35 +279,51 @@ error, with one important caveat worth investigating further:
    becomes visible when compared against an assembly that made a different
    representational choice.
 
-3. **Open question, flagged rather than resolved here:** contig-length
-   profiling (not yet a rigorous origin classification) shows HiFiasm's
-   largest contig is 1.53 Mb, and *none* of its 17 contigs approach
-   *S. pombe* chromosome scale (I: 5.7 Mb, II: 4.6 Mb, III: 3.5 Mb) — every
-   contig in both assemblies looks *S. cerevisiae*-scale. Whether this
-   means the *S. pombe* subgenome is present but highly fragmented, reduced
-   in copy number (common in industrial protoplast fusants after
-   generations of selection), or something else, isn't something the
-   current comparison can determine — that needs each contig's parental
-   origin classified directly (e.g. aligning both assemblies against
-   *S. cerevisiae* and *S. pombe* reference genomes separately), which is a
-   natural follow-up but outside the scope of this pairwise-assembly
-   comparison.
+3. **The redundancy is *S. cerevisiae* haplotype duplication, not retained
+   *S. pombe* content — and the "hybrid" genome isn't really in these
+   assemblies at all.** Step 6 resolves what was initially left as an open
+   question: both assemblies are >96% *S. cerevisiae* sequence, and
+   *S. pombe* is essentially absent (<2% coverage, driven by a handful of
+   short conserved loci rather than real synteny). So the redundancy isn't
+   "Flye kept both parental subgenomes separate, HiFiasm merged them" — it
+   is specifically **two divergent haplotype copies of the *S. cerevisiae*
+   subgenome**, retained separately by Flye (1.79x vs. the pure
+   *S. cerevisiae* reference) and collapsed to essentially one copy by
+   HiFiasm (1.04x). The *S. pombe* side of this engineered fusant strain is
+   not represented in the HiFi sequencing data used for either assembly —
+   consistent with the well-documented genomic instability of protoplast
+   fusants, where one parental genome is frequently lost over generations
+   of industrial strain propagation and selection. Confirming *why* it was
+   lost (loss during fusant construction vs. loss during subsequent culture,
+   vs. simply not present in the DNA extraction used for this sequencing
+   run) would need information outside the scope of what these two
+   assemblies alone can answer.
 
 **Practical takeaway for the class exercise:** don't discard or "fix" the
 HiFiasm duplication as an error — it's the expected behavior of a
-primary/collapsed assembly mode applied to a genuinely heterozygous or
-multi-copy sample. If a haplotype-resolved assembly is the actual goal,
-that requires rerunning HiFiasm with phasing data (trio, Hi-C) rather than
-treating this primary-contig output as final, or working from the Flye
-assembly directly with the understanding that it is *not* single-copy per
-locus.
+primary/collapsed assembly mode applied to a genuinely heterozygous
+diploid *S. cerevisiae* subgenome. If a haplotype-resolved assembly is the
+actual goal, that requires rerunning HiFiasm with phasing data (trio,
+Hi-C) rather than treating this primary-contig output as final, or working
+from the Flye assembly directly with the understanding that it is *not*
+single-copy per locus. Separately, if recovering the *S. pombe* half of
+this strain's genome is actually the goal, that is a sample/sequencing
+question (is *S. pombe* DNA present in the culture at all?), not an
+assembly-parameter question — no amount of reassembly of this particular
+read set will recover subgenome content that isn't in the reads.
 
 ---
 
 ## Reproducing this example
 
-All commands above use the exact assembly files and parameters run for this
-example. Output files (dot plot, alignment summary, redundancy report,
-rearrangement flags, run summary JSON) are committed under
-[`examples/SPSC01_HiFiasm_vs_Flye/`](examples/SPSC01_HiFiasm_vs_Flye/) for
-reference without needing to rerun anything.
+All commands above use the exact assembly files and parameters run for
+this example. Reference genomes: *S. cerevisiae* S288C
+([GCF_000146045.2](https://www.ncbi.nlm.nih.gov/datasets/genome/GCF_000146045.2/))
+and *S. pombe* 972h⁻
+([GCF_000002945.2](https://www.ncbi.nlm.nih.gov/datasets/genome/GCF_000002945.2/)),
+both fetched via the NCBI Datasets API. Output files are committed under
+[`examples/SPSC01_HiFiasm_vs_Flye/`](examples/SPSC01_HiFiasm_vs_Flye/):
+dot plots and the SPSC01-pair summary/redundancy/rearrangement files at
+the top level, and the four reference-comparison alignment summaries under
+`reference_comparisons/` — enough to check every number in this document
+without rerunning anything.

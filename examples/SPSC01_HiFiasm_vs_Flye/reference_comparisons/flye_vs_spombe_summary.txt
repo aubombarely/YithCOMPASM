@@ -1,0 +1,21 @@
+YithCOMPASM.py v0.2.0 — compare_assemblies
+Date       : 2026-07-18 23:11:29
+Command    : scripts/YithCOMPASM.py compare_assemblies --assembly_a /Users/aubombarely/Documents/USA_work/CLASSES/BCB/EscuelaVeranoBCB2026/Material/exercise06/Sacer_HIFI_FLYE.fasta --assembly_b /tmp/refs/spombe_extract/ncbi_dataset/data/GCF_000002945.2/GCF_000002945.2_ASM294v3_genomic.fna --output /tmp/ref_comparisons/flye_vs_spombe --preset asm20 --threads 4 --force --skip_unaligned
+
+Assembly A : /Users/aubombarely/Documents/USA_work/CLASSES/BCB/EscuelaVeranoBCB2026/Material/exercise06/Sacer_HIFI_FLYE.fasta
+  sequences: 99
+  length   : 21,491,821 bp
+Assembly B : /private/tmp/refs/spombe_extract/ncbi_dataset/data/GCF_000002945.2/GCF_000002945.2_ASM294v3_genomic.fna
+  sequences: 4
+  length   : 12,591,253 bp
+
+minimap2 preset      : asm20
+Alignment blocks kept: 16
+Aligned bp (query, deduplicated) : 39,504
+Coverage of A        : 0.18%
+Coverage of B        : 0.10%
+Redundant bp in A    : 0 (multiplicity 1.00x)
+Redundant bp in B    : 28,608 (multiplicity 3.38x)
+Mean identity        : 87.12%
+Length-weighted identity: 86.38%
+Min / Max identity   : 84.41% / 89.84%
