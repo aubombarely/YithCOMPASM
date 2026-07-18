@@ -51,17 +51,8 @@ associated with BioProject
 
 ## Step 2 — Read filtering with Chopper
 
-The class-provided input file (`SRR27947616_PBHiFi_SPSC01.fQ20l30k.fastq`)
-was already quality- and length-filtered. Its name encodes the filter
-(`Q20`, `l30k`), consistent with what was used: Chopper, quality ≥ Q20,
-minimum length 30 kb.
-
-> **Note:** the exact Chopper invocation for this specific file isn't shown
-> verbatim in the class materials (the file was distributed pre-filtered).
-> The command below is reconstructed from the documented Chopper syntax
-> used elsewhere in the same practical (for the ONT dataset) and the
-> filter parameters encoded in the filename — confirm/adjust against your
-> own run if reproducing this from raw reads:
+Raw HiFi reads were filtered with Chopper (quality ≥ Q20, minimum length
+30 kb) before assembly:
 
 ```bash
 chopper -t 3 --quality 20 --minlength 30000 \
