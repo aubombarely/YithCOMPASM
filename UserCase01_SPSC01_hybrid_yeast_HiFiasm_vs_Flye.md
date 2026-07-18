@@ -448,6 +448,105 @@ around the bulk nuclear fragment size distribution, and small circular
 mitochondrial molecules often do not survive that process the same way —
 rather than anything to do with *S. pombe* or a hidden organism.
 
+### Follow-up — a divergent haplotype pair confirmed by BLAST (contig_127 / contig_128)
+
+While exploring the redundancy pattern in `YithCOMPASM`'s interactive dot
+plot (`examples/SPSC01_HiFiasm_vs_Flye/dotplot_interactive.html`), two Flye
+contigs stood out: `contig_127` and `contig_128` both map onto the same
+HiFiasm contig, `ptg000015l` — a candidate for "maybe one of this pair is
+actually the missing *S. pombe* subgenome, collapsed by HiFiasm onto a
+*S. cerevisiae* contig by mistake." The alignment identity already computed
+by `YithCOMPASM` argued against that before any BLAST was run:
+
+| Query | Aligned to `ptg000015l` | Identity |
+|---|---|---|
+| `contig_127` | 328,455 bp | 100.00% |
+| `contig_128` | 246,346 bp + 89,904 bp | 93.29% / 91.57% |
+
+*S. cerevisiae* and *S. pombe* are ~300-450 million years diverged and share
+only ~50-70% nucleotide identity even in conserved coding regions — nowhere
+near what minimap2 (even at the permissive `asm20`, ≤20% divergence) would
+align across hundreds of kb. 91-93% identity is squarely within
+same-species/divergent-haplotype range, not cross-species.
+
+BLAST confirmed it directly. A first attempt submitting the full ~330 kb
+contigs to NCBI's remote `blastn`/`nt`/megablast (same CGI method as the
+addendum above) failed server-side (`Error: Process size limit exceeded,
+SIGXFSZ`) — a near-100%-identity, 330 kb query matches so many near-identical
+*S. cerevisiae* strain assemblies in the redundant `nt` database that the
+result itself is too large for NCBI to build. Since only species-level
+identification was needed (not a full structural mapping — `YithCOMPASM`
+already has that), a representative 5 kb slice from the middle of each
+contig was submitted instead:
+
+| Contig slice | Top hit | Identity | Bitscore |
+|---|---|---|---|
+| `contig_127` | `LN907791.1` *S. cerevisiae* N85, chromosome VIII | 100% | 9201 |
+| `contig_128` | `LN907791.1` *S. cerevisiae* N85, chromosome VIII | 100% | 9217 |
+
+Both slices land on the *same* *S. cerevisiae* chromosome VIII locus, with
+essentially tied scores. Every hit past the top ~7 near-100%-identity
+*S. cerevisiae* strain assemblies falls into other *Saccharomyces sensu
+stricto* species (*S. paradoxus* 91-92%, *S. mikatae* 88%, *S. kudriavzevii*
+86%, *S. eubayanus* 85%) — ordinary genus-level background conservation at a
+moderately conserved locus, not a hybrid-origin signal.
+
+**Confirms, rather than overturns, Step 6 and the addendum above:**
+`contig_127`/`contig_128` are two divergent *S. cerevisiae* haplotypes of the
+same chromosome VIII locus — exactly the kind of pair Flye keeps separate
+and HiFiasm's primary-contig mode collapses onto one (`ptg000015l`) — not a
+second species hiding inside a "duplicated" HiFiasm contig.
+
+---
+
+## Overall conclusion — hybrid strain, or just a heterozygous *S. cerevisiae*?
+
+Every independent test run against this specific HiFi dataset — whole-genome
+alignment to both parental references (Step 6), a targeted BLAST hunt for
+the two least-explained contigs in either assembly (Addendum), a
+six-species mitogenome reference panel mapped directly against both
+assemblies (Follow-up), and now BLAST confirmation of the specific
+haplotype pair that first looked like it could be a hidden second genome
+(this section) — converges on the same answer: **there is no detectable
+*S. pombe* sequence, nuclear or mitochondrial, anywhere in either assembly.**
+What *is* present and abundant is heterozygosity: two divergent haplotypes
+of the *S. cerevisiae* subgenome that Flye keeps as separate contigs and
+HiFiasm's primary-contig mode collapses into one, which is the entire
+redundancy pattern this use case set out to explain.
+
+That is a statement about *this sequencing run and these two assemblies*,
+not necessarily about the strain's actual history. Two explanations are
+consistent with everything observed here, and sequence data alone can't
+distinguish between them:
+
+- **The strain genuinely was built by *S. cerevisiae* × *S. pombe*
+  protoplast fusion, as described, but has since lost the *S. pombe*
+  subgenome.** Genome instability and preferential loss of one parental
+  genome is a well-documented outcome of interspecies protoplast fusants,
+  especially across a divergence as large as *Saccharomyces*/
+  *Schizosaccharomyces* — industrial strain propagation and selection over
+  many generations commonly erodes or eliminates the less-adapted parental
+  genome entirely. Under this explanation, "hybrid" correctly describes the
+  strain's *construction history*, but the genome actually present in the
+  cells that were sequenced for this dataset is no longer hybrid.
+- **The isolate sequenced for this dataset is simply a heterozygous/
+  divergent-haplotype *S. cerevisiae***, and the "hybrid" label reflects
+  strain lineage/documentation that doesn't precisely describe the specific
+  culture or DNA extraction used here (e.g. a related but non-hybrid
+  sub-isolate, a labeling carryover from an earlier stage of strain
+  development, or fusion that never produced stable *S. pombe* retention in
+  the first place).
+
+Both scenarios produce an identical genome to the one observed. Resolving
+which actually happened would need information this dataset can't supply
+on its own — strain provenance records, karyotyping, or ideally a fresh DNA
+extraction sequenced and checked the same way. **What can be said with
+confidence from the data in hand: treat this specific assembly as a
+heterozygous diploid *S. cerevisiae* genome, not a two-subgenome hybrid
+genome** — any downstream analysis (variant calling, haplotype-resolved
+assembly, annotation) should be planned accordingly, regardless of which
+historical explanation is correct.
+
 ---
 
 ## Reproducing this example
