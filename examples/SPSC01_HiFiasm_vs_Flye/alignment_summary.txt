@@ -1,0 +1,21 @@
+YithCOMPASM.py v0.2.0 — compare_assemblies
+Date       : 2026-07-18 22:59:00
+Command    : scripts/YithCOMPASM.py compare_assemblies --assembly_a /Users/aubombarely/Documents/USA_work/CLASSES/BCB/EscuelaVeranoBCB2026/Material/exercise06/Sacer_HIFI_FLYE.fasta --assembly_b /Users/aubombarely/Documents/USA_work/CLASSES/BCB/EscuelaVeranoBCB2026/Material/exercise06/Sacer_HIFI_HIFIASM.fasta --output /tmp/SPSC01_flye_vs_hifiasm --preset asm20 --format png --threads 4 --force --skip_metrics --skip_correspondence --skip_unaligned --skip_redundancy --skip_rearrangements
+
+Assembly A : /Users/aubombarely/Documents/USA_work/CLASSES/BCB/EscuelaVeranoBCB2026/Material/exercise06/Sacer_HIFI_FLYE.fasta
+  sequences: 99
+  length   : 21,491,821 bp
+Assembly B : /Users/aubombarely/Documents/USA_work/CLASSES/BCB/EscuelaVeranoBCB2026/Material/exercise06/Sacer_HIFI_HIFIASM.fasta
+  sequences: 17
+  length   : 12,622,614 bp
+
+minimap2 preset      : asm20
+Alignment blocks kept: 136
+Aligned bp (query, deduplicated) : 21,337,776
+Coverage of A        : 99.28%
+Coverage of B        : 97.23%
+Redundant bp in A    : 15,313 (multiplicity 1.00x)
+Redundant bp in B    : 9,124,531 (multiplicity 1.74x)
+Mean identity        : 96.96%
+Length-weighted identity: 97.98%
+Min / Max identity   : 72.52% / 100.00%

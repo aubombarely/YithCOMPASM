@@ -1,0 +1,37 @@
+{
+  "date": "2026-07-18 22:58:56",
+  "version": "v0.2.0",
+  "input_assembly_a": "/Users/aubombarely/Documents/USA_work/CLASSES/BCB/EscuelaVeranoBCB2026/Material/exercise06/Sacer_HIFI_FLYE.fasta",
+  "input_assembly_b": "/Users/aubombarely/Documents/USA_work/CLASSES/BCB/EscuelaVeranoBCB2026/Material/exercise06/Sacer_HIFI_HIFIASM.fasta",
+  "parameters": {
+    "preset": "asm20",
+    "threads": 4,
+    "min_align_len": 1000,
+    "min_identity": 0.0,
+    "include_secondary": false,
+    "color_map": "RdYlGn"
+  },
+  "results": {
+    "n_alignments": 136,
+    "total_len_a": 21491821,
+    "total_len_b": 12622614,
+    "n_seqs_a": 99,
+    "n_seqs_b": 17,
+    "aligned_bp_query": 21337776,
+    "coverage_a_pct": 99.2832,
+    "coverage_b_pct": 97.2344,
+    "redundant_bp_a": 15313,
+    "redundant_bp_b": 9124531,
+    "multiplicity_a": 1.0007,
+    "multiplicity_b": 1.7434,
+    "mean_identity": 96.9594,
+    "weighted_identity": 97.9774,
+    "min_identity": 72.5169,
+    "max_identity": 100.0
+  },
+  "resource_usage": {
+    "wall_clock_s": 8.8,
+    "peak_mem_mb": 148.6,
+    "emissions_kg_CO2eq": 1.1699381462472249e-06
+  }
+}

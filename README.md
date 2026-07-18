@@ -160,6 +160,14 @@ bridged by minimap2 into one degenerate alignment instead of being split,
 in which case Module 8 will not see it. See `test/README.md` for a worked
 example of this behavior.
 
+## Use cases
+
+- [UserCase01 — Is the HiFiasm assembly "really duplicated"?](UserCase01_SPSC01_hybrid_yeast_HiFiasm_vs_Flye.md)
+  Real HiFiasm vs. Flye assemblies of a hybrid yeast strain (SPSC01,
+  *S. cerevisiae* × *S. pombe* protoplast fusant). Uses the redundancy and
+  correspondence modules to explain a 70%-duplicated-BUSCO discrepancy
+  between the two assemblers with base-pair-resolved evidence.
+
 ## Run log / run summary / carbon footprint
 
 Every run writes `logs/Run_YithCOMPASM.log`, `results/{prefix}.run_summary.json`

@@ -1,0 +1,4 @@
+type	query_seq	query_start	query_end	target_seq	target_start	target_end
+inversion	contig_122	184699	217015	ptg000013l	192814	225164
+inversion	contig_6	400400	414001	ptg000001l	16447	29720
+inversion	contig_79	0	23807	ptg000016l	211176	234997
