@@ -314,6 +314,71 @@ read set will recover subgenome content that isn't in the reads.
 
 ---
 
+## Addendum — hunting for a hidden organism via candidate contigs and BLAST
+
+Step 6 shows *S. pombe* is essentially absent by whole-genome alignment,
+but alignment against a *specific* reference only tests "does this match
+*this* organism" — it can't identify an unexpected one. A cheap way to
+probe for that: mitochondria exist at very high copy number per cell, so
+even if a second organism's *nuclear* genome were too low-abundance to
+assemble, its mitochondrial genome could still assemble cleanly as a
+small, distinct contig. Two candidates stood out:
+
+- **`contig_147`** (Flye, 45 kb) — only 50% explained by the
+  *S. cerevisiae* reference in the Step 6 correspondence table, the
+  worst-explained contig in either assembly.
+- **`ptg000017l`** (HiFiasm, 92.7 kb) — the smallest HiFiasm contig, close
+  to *S. cerevisiae* mitochondrial size (~85.8 kb); notably, **no contig in
+  either assembly has the real *S. cerevisiae* mitochondrion
+  (`NC_001224.1`) as its best match at all**, which is itself a small open
+  question.
+
+Both were submitted to NCBI's remote BLAST (`blastn`, `nt`, megablast) via
+the CGI URL API, since no local BLAST+ installation was available:
+
+```bash
+# submit
+curl -s "https://blast.ncbi.nlm.nih.gov/Blast.cgi" \
+    --data-urlencode "CMD=Put" \
+    --data-urlencode "PROGRAM=blastn" \
+    --data-urlencode "MEGABLAST=on" \
+    --data-urlencode "DATABASE=nt" \
+    --data-urlencode "QUERY=$(grep -v '^>' contig_147.fasta | tr -d '\n')"
+# poll (no more than once/minute) using the returned RID, then fetch results:
+curl -s "https://blast.ncbi.nlm.nih.gov/Blast.cgi?CMD=Get&RID=<RID>&FORMAT_TYPE=Text&DESCRIPTIONS=15"
+```
+
+**Result: both are ordinary *S. cerevisiae*, not a hidden organism.**
+
+- `contig_147` top hits: the *AQY1* aquaporin gene region and several
+  *S. cerevisiae* strain chromosomes (IV, XII, XVI, VII), 98–100% identity.
+  Aquaporin loci and subtelomeres are known to be paralogous and
+  strain-variable — this explains why a single-reference (S288C) alignment
+  couldn't cleanly assign it to one chromosome, without needing a foreign
+  organism to explain it.
+- `ptg000017l` top hit: *S. cerevisiae* chromosome XII at 99% identity
+  (very high bitscore), plus several 35S rRNA / rDNA-adjacent hits — this
+  region carries the large tandem rDNA repeat array (~100–200 copies),
+  a classic repeat-collapse assembly failure mode. Most likely a
+  mis-assembled rDNA-array fragment, not foreign DNA. (A secondary
+  *S. paradoxus* hit at 94% identity is expected background conservation
+  in that region across the genus, not a distinct signal — the
+  *S. cerevisiae* hit is both higher-identity and far higher-scoring.)
+
+**This reinforces, rather than overturns, the Step 6 conclusion.** The two
+strongest candidates for "unexplained sequence that might belong to a
+different organism" both turned out to have mundane, well-known
+explanations specific to *S. cerevisiae* genome assembly difficulty
+(paralogous subtelomeres, rDNA repeat collapse). There is no BLAST
+evidence anywhere in either assembly of *S. pombe* or a third organism.
+The *S. cerevisiae* mitochondrion's absence as anyone's best-match target
+remains a minor open question, but the more likely explanation is that
+mito sequence is present but merged into a larger multi-locus contig
+rather than assembling as its own separate contig — not that a different
+organism's mitochondrion is standing in for it.
+
+---
+
 ## Reproducing this example
 
 All commands above use the exact assembly files and parameters run for
