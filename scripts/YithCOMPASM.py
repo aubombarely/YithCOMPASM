@@ -31,7 +31,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-VERSION = "v0.4.1"
+VERSION = "v0.4.2"
 
 MAX_LABELED_SEQS = 30   # only the largest N sequences per axis get gridlines/labels
 
@@ -794,7 +794,9 @@ function triggerDownload(content, filename, mime) {
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
     exportStatus.style.color = "#4C9BE8";
-    exportStatus.textContent = "Downloaded " + filename;
+    exportStatus.textContent = "Saved " + filename + " to your browser's default downloads location " +
+        "(usually a \"Downloads\" folder, or check your browser's download list/history if unsure — " +
+        "the page itself cannot see or choose that location).";
   } catch (err) {
     exportStatus.style.color = "#E8604C";
     exportStatus.textContent = "Download failed: " + err.message +
@@ -917,9 +919,17 @@ function renderLabels(minLen) {
   const invY = 1 / pxPerUnitY();
 
   function place(seqs, axis) {
+    // seqs_a/seqs_b are stored sorted by length (descending), not by position —
+    // and seqs_b's offsets are additionally Y-flipped relative to that length
+    // order, so they run in *decreasing* position order. The gap-check below
+    // assumes ascending position order, so sort by offset explicitly rather
+    // than relying on array order (this is what silently dropped every B-axis
+    // label after the first: positions were decreasing, so every label after
+    // the first compared against an ever-larger "lastPx" and always lost).
     const visible = seqs.filter(s => s.length >= minLen && (axis === "x"
       ? s.offset + s.length > vb.x && s.offset < vb.x + vb.w
-      : s.offset + s.length > vb.y && s.offset < vb.y + vb.h));
+      : s.offset + s.length > vb.y && s.offset < vb.y + vb.h))
+      .sort((a, b) => a.offset - b.offset);
     let lastPx = -Infinity;
     for (const s of visible) {
       const start = Math.max(s.offset, axis === "x" ? vb.x : vb.y);

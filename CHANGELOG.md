@@ -1,5 +1,24 @@
 # Changelog
 
+## [v0.4.2] — 2026-07-19
+
+### Fixed
+- Interactive dot plot: only the first Y-axis (assembly B) SeqID label ever
+  rendered, no matter the zoom level or label size. `seqs_b` is stored
+  sorted by length descending *and* Y-flipped for display, so its offsets
+  run in decreasing position order — but the labeler's overlap-avoidance
+  logic assumed ascending order (it only ever compares each label's
+  position to the previous one drawn), so every label after the first
+  compared against an ever-larger "already placed here" position and lost.
+  X-axis (assembly A) labels were unaffected since A's offsets aren't
+  flipped. Fixed by sorting each axis's visible sequences by on-plot
+  position immediately before placing labels, rather than relying on the
+  underlying (length-sorted) array order.
+- Basket export success message now states explicitly that the file was
+  saved to the browser's default downloads location, since the page has
+  no way to see or control where a triggered download actually lands and
+  users were unsure whether/where it had saved anything.
+
 ## [v0.4.1] — 2026-07-19
 
 ### Fixed
