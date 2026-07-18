@@ -21,6 +21,7 @@ import argparse
 import csv
 import getpass
 import json
+import math
 import os
 import platform
 import resource
@@ -31,7 +32,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-VERSION = "v0.4.3"
+VERSION = "v0.5.0"
 
 MAX_LABELED_SEQS = 30   # only the largest N sequences per axis get gridlines/labels
 
@@ -1247,6 +1248,82 @@ def flag_rearrangements(records: list, out_path: Path, min_block_len: int = 1000
     return len(flags)
 
 
+# ── Module 9: identity distribution histogram ─────────────────────────────────
+
+def build_identity_histogram(records: list, out_path: Path, plot_formats: list,
+                             tsv_path: Path, bin_width: float = 1.0) -> int:
+    """
+    bp-weighted histogram of alignment identity: x-axis %identity, y-axis
+    aligned bp per bin. Useful for telling apart "genome is uniformly this
+    divergent" from "most of the genome is near-identical, with a smaller,
+    more divergent minority" — a single mean/weighted-mean identity number
+    (or an external tool's single genome-wide heterozygosity estimate) can't
+    distinguish those, but the shape of this distribution can.
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    matplotlib.rcParams.update({
+        "font.size": 10,
+        "axes.titlesize": 12,
+        "axes.labelsize": 11,
+        "figure.dpi": 150,
+        "savefig.dpi": 150,
+        "figure.facecolor": "white",
+    })
+
+    if not records:
+        _log("  No alignment records — skipping identity histogram")
+        return 0
+
+    identities = [r["identity"] for r in records]
+    weights_bp = [r["qend"] - r["qstart"] for r in records]
+    total_bp = sum(weights_bp)
+
+    lo = math.floor(min(identities) / bin_width) * bin_width
+    n_bins = max(1, math.ceil((100.0 - lo) / bin_width))
+    edges = [round(lo + i * bin_width, 6) for i in range(n_bins + 1)]
+
+    fig, ax = plt.subplots(figsize=(9, 5))
+    counts, bin_edges, _patches = ax.hist(
+        identities, bins=edges, weights=[w / 1e6 for w in weights_bp],
+        color="#4C9BE8", edgecolor="white", linewidth=0.4,
+    )
+
+    weighted_mean = sum(i * w for i, w in zip(identities, weights_bp)) / total_bp
+    ax.axvline(weighted_mean, color="#F5A623", linewidth=1.5, linestyle="--",
+              label=f"bp-weighted mean: {weighted_mean:.2f}%")
+    ax.legend(loc="upper left")
+
+    ax.set_xlabel("% identity")
+    ax.set_ylabel("Aligned bp (Mb)")
+    ax.set_title(f"Identity distribution: {len(records):,} alignment blocks, "
+                f"{total_bp / 1e6:.2f} Mb aligned")
+
+    fig.tight_layout()
+    for fmt in plot_formats:
+        fmt_path = out_path.with_suffix(f".{fmt}")
+        fig.savefig(fmt_path)
+        _log(f"  Written: {fmt_path.name}")
+    plt.close(fig)
+
+    rows = []
+    cum_bp = 0
+    for i in range(len(bin_edges) - 1):
+        bin_bp = int(round(counts[i] * 1e6))
+        cum_bp += bin_bp
+        rows.append((bin_edges[i], bin_edges[i + 1], bin_bp,
+                    round(100 * bin_bp / total_bp, 3) if total_bp else 0.0,
+                    round(100 * cum_bp / total_bp, 3) if total_bp else 0.0))
+    with open(tsv_path, "w") as fh:
+        fh.write("identity_bin_low\tidentity_bin_high\taligned_bp\tpct_of_total_bp\tcumulative_pct\n")
+        for row in rows:
+            fh.write("\t".join(str(v) for v in row) + "\n")
+    _log(f"  Written: {tsv_path.name} ({len(rows)} bins, bp-weighted mean identity {weighted_mean:.2f}%)")
+    return len(rows)
+
+
 # ── Carbon footprint / resource usage ─────────────────────────────────────────
 
 def _start_tracker(logs_dir: Path, out_file: str, project_name: str, disabled: bool):
@@ -1328,6 +1405,8 @@ def run_compare_assemblies(args) -> None:
             _log("    [7] Redundancy / coverage depth → results/mod07_redundancy_*.tsv")
         if not args.skip_rearrangements:
             _log("    [8] Rearrangement flags   → results/mod08_rearrangements_*.tsv")
+        if not args.skip_identity_histogram:
+            _log("    [9] Identity histogram    → results/mod09_identity_histogram_*")
         _log("  Exiting (--dry_run).")
         if _LOG_FH:
             _LOG_FH.close()
@@ -1415,6 +1494,14 @@ def run_compare_assemblies(args) -> None:
         n_flags = flag_rearrangements(records, rearr_path, args.min_rearrangement_len)
         summary["n_rearrangement_flags"] = n_flags
 
+    if not args.skip_identity_histogram:
+        _banner("Module 9 — Identity distribution")
+        hist_path = results / f"mod09_identity_histogram_{prefix}"
+        hist_tsv = results / f"mod09_identity_histogram_{prefix}.tsv"
+        n_bins = build_identity_histogram(records, hist_path, plot_formats, hist_tsv,
+                                          args.identity_bin_width)
+        summary["n_identity_bins"] = n_bins
+
     emissions_kg = None
     if tracker is not None:
         try:
@@ -1489,6 +1576,11 @@ def main(argv=None):
     cmp_ap.add_argument("--min_rearrangement_len", type=int, default=1000,
                         help="Minimum alignment block length (bp) considered for Module 7 "
                              "inversion/rearrangement flagging (default: 1000)")
+    cmp_ap.add_argument("--skip_identity_histogram", action="store_true",
+                        help="Skip Module 9 — bp-weighted %%identity distribution histogram")
+    cmp_ap.add_argument("--identity_bin_width", type=float, default=1.0,
+                        help="Bin width (percentage points) for Module 9's identity "
+                             "histogram (default: 1.0)")
     cmp_ap.add_argument("--force", action="store_true",
                         help="Rerun all steps from scratch even if intermediate outputs exist in workdir/")
     cmp_ap.add_argument("--dry_run", action="store_true",

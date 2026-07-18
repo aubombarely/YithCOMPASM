@@ -1,5 +1,23 @@
 # Changelog
 
+## [v0.5.0] — 2026-07-19
+
+### Added
+- Module 9 — identity distribution histogram
+  (`mod09_identity_histogram_{prefix}.{jpeg,tsv}`): a bp-weighted histogram
+  of alignment %identity. A single mean or weighted-mean identity number
+  can't distinguish "the genome is uniformly this divergent" from "most of
+  it is near-identical, with a smaller, more divergent minority" — the
+  shape of this distribution can. Built to cross-check a k-mer-based
+  external heterozygosity estimate (e.g. GenomeScope2) against
+  `YithCOMPASM`'s own alignment data (see UserCase01's new follow-up
+  section): on the real UserCase01 data, 58% of aligned bp sits at ≥99.5%
+  identity (consistent with GenomeScope2's low reported heterozygosity)
+  while ~40% is meaningfully more divergent, which a single genome-wide
+  average necessarily hides.
+- `--skip_identity_histogram` and `--identity_bin_width` (default: 1.0
+  percentage point) flags.
+
 ## [v0.4.3] — 2026-07-19
 
 ### Changed

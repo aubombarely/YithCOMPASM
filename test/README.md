@@ -51,6 +51,7 @@ python3 scripts/YithCOMPASM.py compare_assemblies \
 | 7 | `mod07_redundancy_A_*.tsv` | Empty (0 regions) |
 | 7 | `mod07_redundancy_B_*.tsv` | Two regions on `ctg2`, depth 2, covering ≈7,246 bp total — the region hit by both `ctg2` and `ctg4` |
 | 8 | `mod08_rearrangements_*.tsv` | One `inversion` on `(ctg1, ctg1)`; one `rearrangement` on `(ctg2, ctg2)`; one `rearrangement` on `(ctg4, ctg2)` |
+| 9 | `mod09_identity_histogram_*.jpeg`, `.tsv` | 4 bins, bp-weighted mean identity ≈97.9% (matches Module 4) |
 
 **Note on Module 8 and minimap2 chaining:** the test's inversion uses a
 single clean breakpoint (not an internal block sandwiched between two

@@ -497,6 +497,82 @@ same chromosome VIII locus — exactly the kind of pair Flye keeps separate
 and HiFiasm's primary-contig mode collapses onto one (`ptg000015l`) — not a
 second species hiding inside a "duplicated" HiFiasm contig.
 
+### Follow-up — cross-checking against a GenomeScope2 k-mer estimate
+
+A GenomeScope2 run on the same HiFi reads gave an independent, k-mer-based
+estimate: genome size 11.74 Mb, heterozygosity 0.37%. Comparing that against
+what `YithCOMPASM` measured directly from the alignment:
+
+**Genome size — good agreement.**
+
+| | Size | vs. GenomeScope2 (11.74 Mb) |
+|---|---|---|
+| GenomeScope2 estimate | 11.74 Mb | — |
+| Real *S. cerevisiae* S288C reference | 12.16 Mb | +3.6% |
+| HiFiasm collapsed assembly | 12.62 Mb | +7.5% |
+| Flye assembly | 21.49 Mb | 1.83× (not the full 2× a completely haplotype-separated diploid would give) |
+
+HiFiasm's primary-contig output approximates one representative copy per
+locus, and 12.62 Mb landing within single-digit percent of both the k-mer
+estimate and the real reference is a solid match — the small excess is the
+same residual under-collapsing already quantified above (HiFiasm's own
+multiplicity, 1.04x). Flye's 1.83× (rather than a clean 2×) foreshadows the
+next point: haplotype separation isn't uniform across the genome.
+
+**Heterozygosity — consistent for most of the genome, but a single number
+hides real structure.** This is what Module 9 (`mod09_identity_histogram_*`)
+is for: a bp-weighted histogram of alignment identity across all 136
+Flye-vs-HiFiasm blocks, generated with:
+
+```bash
+python3 scripts/YithCOMPASM.py compare_assemblies \
+    --assembly_a Sacer_HIFI_FLYE.fasta \
+    --assembly_b Sacer_HIFI_HIFIASM.fasta \
+    --output     results/SPSC01_flye_vs_hifiasm \
+    --preset     asm20 --threads 4
+```
+
+![Identity distribution: Flye vs HiFiasm](examples/SPSC01_HiFiasm_vs_Flye/identity_histogram.jpeg)
+
+| Identity | % of aligned bp |
+|---|---|
+| ≥99.5% (≤0.5% divergence) | **58.4%** |
+| 99.0-99.5% | 5.6% |
+| 98.0-99.0% | 8.5% |
+| 95.0-98.0% | 16.8% |
+| 90.0-95.0% | 6.6% |
+| <90.0% | 4.2% |
+
+(Full per-1%-bin breakdown: `examples/SPSC01_HiFiasm_vs_Flye/identity_histogram.tsv`.)
+
+The dominant mass — 58.4% of aligned bp — sits at ≥99.5% identity, the same
+regime as GenomeScope2's 0.37% heterozygosity call. That agreement is also
+*why* Flye doesn't reach a clean 2× assembly size: where haplotype
+divergence is genuinely this low, there's essentially no k-mer/read signal
+for either assembler to phase on, low-heterozygosity or not.
+
+But **41.6% of the aligned genome is meaningfully more divergent than a
+uniform 0.37% would predict** — including 4.2% below 90% identity, which is
+exactly the range `contig_128` fell into in the follow-up above, and matches
+what the earlier BLAST addendum already flagged as rDNA-array and
+paralogous-subtelomere regions. GenomeScope2's %het is a single genome-wide
+average from a k-mer coverage mixture model tuned to a roughly uniform SNP
+signal — it's known to underrepresent exactly this kind of localized,
+structurally complex divergence, since those k-mers tend to get absorbed
+into the model's "repetitive/error" component rather than cleanly
+contributing to the heterozygosity peak.
+
+**Conclusion: the two estimates agree where they're measuring the same
+thing** (genome size, and the bulk near-identical fraction of the genome)
+**but answer different questions.** GenomeScope2 gives one number for the
+whole genome; `YithCOMPASM`'s alignment-based identity distribution shows
+that number is really an average masking a genome that's mostly
+near-identical between haplotypes with a substantial, much more divergent
+minority concentrated in repetitive/complex regions — useful context for
+deciding how much to trust a single heterozygosity percentage when planning
+downstream analysis (e.g. variant calling parameters, or how aggressively to
+expect haplotype-aware assembly to actually separate the two copies).
+
 ---
 
 ## Overall conclusion — hybrid strain, or just a heterozygous *S. cerevisiae*?

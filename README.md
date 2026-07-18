@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v0.4.3-teal" alt="Version v0.4.3"/>
+  <img src="https://img.shields.io/badge/version-v0.5.0-teal" alt="Version v0.5.0"/>
   <img src="https://img.shields.io/badge/python-3.10%2B-blue" alt="Python 3.10+"/>
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS-lightgrey" alt="Platform"/>
 </p>
@@ -32,6 +32,7 @@ between two genomes.
 | 6 | `mod06_unaligned_{A,B}_*.tsv` | Regions with no alignment coverage (assembly-specific sequence) |
 | 7 | `mod07_redundancy_{A,B}_*.tsv` | Regions covered ≥2x (e.g. a collapsed haplotype hit by multiple contigs of the other assembly) |
 | 8 | `mod08_rearrangements_*.tsv` | Alignment-derived inversion/rearrangement candidates (heuristic, not a full SV caller) |
+| 9 | `mod09_identity_histogram_*.jpeg`, `.tsv` | bp-weighted %identity distribution — the shape of the divergence, not just its mean |
 
 ## Requirements
 
@@ -76,6 +77,7 @@ python3 scripts/YithCOMPASM.py compare_assemblies \
 | `--color_map` | No | Matplotlib colormap for the dot plot identity scale (default: `RdYlGn`) |
 | `--format` | No | Comma-separated dot plot formats: jpeg, png, pdf, svg (default: `jpeg`) |
 | `--min_rearrangement_len` | No | Minimum block length considered for Module 8 flagging (default: 1000) |
+| `--identity_bin_width` | No | Bin width (percentage points) for Module 9's identity histogram (default: 1.0) |
 | `--skip_metrics` | No | Skip Module 1 |
 | `--skip_dotplot` | No | Skip Module 3 (both the static image and the interactive HTML) |
 | `--skip_dotplot_html` | No | Keep the static dot plot image but skip generating the interactive HTML version |
@@ -83,6 +85,7 @@ python3 scripts/YithCOMPASM.py compare_assemblies \
 | `--skip_unaligned` | No | Skip Module 6 |
 | `--skip_redundancy` | No | Skip Module 7 |
 | `--skip_rearrangements` | No | Skip Module 8 |
+| `--skip_identity_histogram` | No | Skip Module 9 |
 | `--force` | No | Rerun all steps even if checkpointed outputs exist |
 | `--dry_run` | No | Validate inputs and print steps without executing |
 | `--disable_co2_tracking` | No | Disable carbon footprint tracking |
@@ -103,6 +106,8 @@ python3 scripts/YithCOMPASM.py compare_assemblies \
 │   ├── mod07_redundancy_A_{prefix}.tsv
 │   ├── mod07_redundancy_B_{prefix}.tsv
 │   ├── mod08_rearrangements_{prefix}.tsv
+│   ├── mod09_identity_histogram_{prefix}.jpeg
+│   ├── mod09_identity_histogram_{prefix}.tsv
 │   └── {prefix}.run_summary.json
 ├── workdir/
 │   └── {prefix}.paf              (safe to delete after a successful run)
@@ -212,6 +217,11 @@ estimated CO2 emissions if `codecarbon` is installed), and an optional
    differences.
 4. Cross-check anything visually striking against `mod08_rearrangements_*.tsv`,
    `mod07_redundancy_*.tsv`, and `mod06_unaligned_*.tsv` for a tabular breakdown.
+   `mod09_identity_histogram_*` shows whether a given mean/weighted-mean
+   identity reflects a genuinely uniform divergence or a mix of a
+   near-identical majority and a more divergent minority (e.g. repeats,
+   paralogs) — useful context when comparing against an external
+   k-mer-based heterozygosity estimate (see UserCase01).
 5. Use `mod05_correspondence_*.tsv` to confirm scaffold-to-chromosome
    assignment, e.g. as input to `GenoToolBoxPlus/FastaRename.py` if you need
    to harmonize sequence naming between the two assemblies.
